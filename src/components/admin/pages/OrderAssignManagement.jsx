@@ -36,11 +36,18 @@ const OrderAssignManagement = () => {
           assignmentsData[order.oid] = null;
         }
 
-        // Fetch local order data for local orders
-        if (order.order_type === 'local') {
+        // Fetch local order data for local orders (check both 'local' and 'LOCAL GRADE ORDER')
+        if (order.order_type === 'local' || order.order_type === 'LOCAL GRADE ORDER') {
           try {
             const localOrderResponse = await getLocalOrder(order.oid);
-            localOrdersData[order.oid] = localOrderResponse.data;
+            // Handle different response structures
+            if (localOrderResponse.success && localOrderResponse.data) {
+              localOrdersData[order.oid] = localOrderResponse.data;
+            } else if (localOrderResponse.data) {
+              localOrdersData[order.oid] = localOrderResponse.data;
+            } else {
+              localOrdersData[order.oid] = localOrderResponse;
+            }
           } catch (err) {
             // If local order doesn't exist, that's fine
             localOrdersData[order.oid] = null;
@@ -242,25 +249,36 @@ const OrderAssignManagement = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
-                      const isLocalOrder = order.order_type === 'LOCAL GRADE ORDER';
+                      // Check for both 'local' and 'LOCAL GRADE ORDER' order types
+                      const isLocalOrder = order.order_type === 'local' || order.order_type === 'LOCAL GRADE ORDER';
                       const isStage1Completed = assignments[order.oid]?.stage1_status === 'completed';
 
-                      // For local orders, check if local order data actually exists (not null or undefined)
+                      // For local orders, check if local order data actually exists
+                      // Check for product_assignments or delivery_routes to determine if assignment exists
                       const localOrderData = localOrders[order.oid];
-                      const hasLocalOrderData = isLocalOrder && localOrderData && localOrderData.local_order_id;
+                      const hasLocalOrderData = isLocalOrder && localOrderData && (
+                        localOrderData.product_assignments || 
+                        localOrderData.productAssignments || 
+                        localOrderData.delivery_routes || 
+                        localOrderData.deliveryRoutes ||
+                        localOrderData.local_order_id
+                      );
 
                       // For local orders, check if local order data exists
                       // For flight orders, check if stage1 is completed
                       const shouldShowEdit = isLocalOrder ? hasLocalOrderData : isStage1Completed;
-
-                      //console.log(`Order ${order.oid}: type=${order.order_type}, localOrderData=`, localOrderData, `hasLocalData=${hasLocalOrderData}, stage1=${isStage1Completed}, showEdit=${shouldShowEdit}`);
 
                       if (shouldShowEdit) {
                         return (
                           <button
                             onClick={() => {
                               if (isLocalOrder) {
-                                navigate(`/order-assign/local/${order.oid}`, { state: { orderData: order } });
+                                navigate(`/order-assign/local/${order.oid}`, { 
+                                  state: { 
+                                    orderData: order,
+                                    localOrderData: localOrderData // Pass local order data for faster loading
+                                  } 
+                                });
                               } else {
                                 navigate(`/order-assign/stage1/${order.oid}`, { state: { orderData: order } });
                               }

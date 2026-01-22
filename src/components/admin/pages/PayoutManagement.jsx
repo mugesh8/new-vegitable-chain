@@ -227,10 +227,6 @@ const PayoutManagement = () => {
     { label: 'Average Payout', value: formatCurrency(summaryStats.averagePayout) }
   ];
 
-  const getPaymentModeColor = (mode) => {
-    return mode === 'Bank' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700';
-  };
-
   const getStatusColor = (status) => {
     return status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-yellow-100 text-yellow-700';
   };
@@ -349,9 +345,6 @@ const PayoutManagement = () => {
                     Amount
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Payment Mode
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
                     Status
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
@@ -362,13 +355,13 @@ const PayoutManagement = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="5" className="px-6 py-8 text-center text-[#6B8782]">
                       Loading farmer payouts...
                     </td>
                   </tr>
                 ) : paginatedPayouts.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="5" className="px-6 py-8 text-center text-[#6B8782]">
                       No farmer payouts found
                     </td>
                   </tr>
@@ -395,15 +388,6 @@ const PayoutManagement = () => {
                         <div className="text-sm font-bold text-[#0D5C4D]">
                           {formatCurrency(payout.amount)}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-block px-4 py-1.5 rounded-full text-xs font-medium ${getPaymentModeColor(
-                            payout.status === 'Paid' ? 'Bank' : 'Pending'
-                          )}`}
-                        >
-                          {payout.status === 'Paid' ? 'Bank' : 'Pending'}
-                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <span

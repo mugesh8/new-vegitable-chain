@@ -35,6 +35,7 @@ const OrderAssignCreateStage1 = () => {
   const [availableStock, setAvailableStock] = useState({});
   const [farmerAvailability, setFarmerAvailability] = useState({});
   const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
+  const [stage1Status, setStage1Status] = useState(null); // Store stage1_status from assignment data
 
   // Fetch available stock and farmer availability on component mount
   useEffect(() => {
@@ -243,6 +244,11 @@ const OrderAssignCreateStage1 = () => {
 
           if (assignmentData.order_type) {
             setOrderType(assignmentData.order_type);
+          }
+
+          // Store stage1_status from assignment data
+          if (assignmentData.stage1_status) {
+            setStage1Status(assignmentData.stage1_status);
           }
 
           // Load delivery routes if they exist
@@ -855,12 +861,14 @@ const OrderAssignCreateStage1 = () => {
                 <td className="px-4 py-3 text-sm text-left text-gray-900">{orderDetails?.customer_name || 'N/A'}</td>
                 <td className="px-4 py-3 text-sm text-left text-gray-900">{orderDetails?.items?.length || 0} Items</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${orderDetails?.order_status === 'pending' ? 'bg-purple-100 text-purple-700' :
-                    orderDetails?.order_status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
-                      orderDetails?.order_status === 'delivered' ? 'bg-emerald-600 text-white' :
-                        'bg-gray-100 text-gray-700'
-                    }`}>
-                    {orderDetails?.order_status ? orderDetails.order_status.charAt(0).toUpperCase() + orderDetails.order_status.slice(1) : 'N/A'}
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                    stage1Status === 'pending' ? 'bg-purple-100 text-purple-700' :
+                    stage1Status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
+                    stage1Status === 'completed' ? 'bg-emerald-600 text-white' :
+                    stage1Status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {stage1Status ? stage1Status.charAt(0).toUpperCase() + stage1Status.slice(1).replace('_', ' ') : (orderDetails?.order_status ? orderDetails.order_status.charAt(0).toUpperCase() + orderDetails.order_status.slice(1) : 'N/A')}
                   </span>
                 </td>
               </tr>
@@ -1889,6 +1897,7 @@ const OrderAssignCreateStage1 = () => {
                                 <option value="">Select...</option>
                                 <option value="Drop">Drop</option>
                                 <option value="Picked and Packed">Picked and Packed</option>
+                                <option value="Completed">Completed</option>
                               </select>
                               {assignmentStatuses[assignment.routeId] === 'Drop' && (
                                 <div className="mt-2 space-y-2">

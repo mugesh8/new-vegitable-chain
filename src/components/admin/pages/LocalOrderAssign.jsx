@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Edit2, X, MapPin, Check, Package, Truck, User } from 'lucide-react';
 import { getAssignmentOptions, updateStage1Assignment, getOrderAssignment } from '../../../api/orderAssignmentApi';
 import { getOrderById } from '../../../api/orderApi';
@@ -19,6 +20,7 @@ const LocalOrderAssign = () => {
   const location = useLocation();
   const { id } = useParams();
   const orderData = location.state?.orderData;
+  const localOrderDataFromState = location.state?.localOrderData;
   const [assignmentOptions, setAssignmentOptions] = useState({
     farmers: [],
     suppliers: [],
@@ -30,12 +32,14 @@ const LocalOrderAssign = () => {
   const [remainingRowAssignments, setRemainingRowAssignments] = useState({});
   const [deliveryRoutes, setDeliveryRoutes] = useState([]);
   const [orderDetails, setOrderDetails] = useState(orderData || null);
-  const [selectedType, setSelectedType] = useState('Box');
   const [assignmentStatuses, setAssignmentStatuses] = useState({});
   const [availableStock, setAvailableStock] = useState({});
-  const [farmerAvailability, setFarmerAvailability] = useState({});
-  const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
-  const [labourDropdownOpen, setLabourDropdownOpen] = useState({});
+    const [farmerAvailability, setFarmerAvailability] = useState({});
+    const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
+    const [labourDropdownOpen, setLabourDropdownOpen] = useState({});
+    const [labourDropdownPosition, setLabourDropdownPosition] = useState({});
+    const labourButtonRefs = useRef({});
+    const labourDropdownRef = useRef(null);
 
   // Fetch available stock and farmer availability on component mount
   useEffect(() => {
@@ -82,30 +86,45 @@ const LocalOrderAssign = () => {
     fetchFarmerAvailability();
   }, [assignmentOptions.farmers]);
 
-  // Update selectedType and isBoxBasedOrder when orderDetails changes
+  // Update isBoxBasedOrder when orderDetails changes
   useEffect(() => {
     if (orderDetails?.items?.length > 0) {
-      const packing = orderDetails.items[0].packing_type || "";
-      const hasWeight = /\d+\s*kg/i.test(packing);
-
       // Determine if order was created with boxes or net weight
       const firstItem = orderDetails.items[0];
       const hasBoxes = firstItem.num_boxes && parseInt(firstItem.num_boxes) > 0;
       setIsBoxBasedOrder(hasBoxes);
-
-      if (hasWeight) {
-        if (/box/i.test(packing)) {
-          setSelectedType("Box");
-          return;
-        }
-        if (/bag/i.test(packing)) {
-          setSelectedType("Bag");
-          return;
-        }
-      }
     }
-    setSelectedType("Box");
   }, [orderDetails]);
+
+  // Close labour dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const openDropdowns = Object.keys(labourDropdownOpen).filter(key => labourDropdownOpen[key]);
+      if (openDropdowns.length === 0) return;
+
+      // Check if click is on any button
+      const clickedButton = openDropdowns.some(routeId => {
+        const button = labourButtonRefs.current[routeId];
+        return button && button.contains(event.target);
+      });
+
+      // Check if click is inside any dropdown
+      const clickedDropdown = event.target.closest('.absolute.z-10.mt-1');
+
+      if (!clickedButton && !clickedDropdown) {
+        const updatedState = {};
+        openDropdowns.forEach(routeId => {
+          updatedState[routeId] = false;
+        });
+        setLabourDropdownOpen(prev => ({ ...prev, ...updatedState }));
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [labourDropdownOpen]);
 
   // Helper function to create delivery route for an assignment
   const createDeliveryRoute = (entity, entityType, row, assignedQty, isRemaining = false) => {
@@ -248,9 +267,40 @@ const LocalOrderAssign = () => {
         });
 
         // Try to load local order data first
+        // Check if localOrderData was passed from navigation state (for faster loading)
         let localOrderData = null;
-        try {
-          const localOrderResponse = await getLocalOrder(id);
+        
+        // First, try to use data from navigation state if available
+        if (localOrderDataFromState) {
+          localOrderData = localOrderDataFromState;
+          // Parse JSON strings if needed (similar to API response handling)
+          if (localOrderData.product_assignments && typeof localOrderData.product_assignments === 'string') {
+            try {
+              localOrderData.productAssignments = JSON.parse(localOrderData.product_assignments);
+            } catch (e) {
+              console.error('Error parsing product_assignments from state:', e);
+            }
+          }
+          if (localOrderData.delivery_routes && typeof localOrderData.delivery_routes === 'string') {
+            try {
+              localOrderData.deliveryRoutes = JSON.parse(localOrderData.delivery_routes);
+            } catch (e) {
+              console.error('Error parsing delivery_routes from state:', e);
+            }
+          }
+          if (localOrderData.summary_data && typeof localOrderData.summary_data === 'string') {
+            try {
+              localOrderData.summaryData = JSON.parse(localOrderData.summary_data);
+            } catch (e) {
+              console.error('Error parsing summary_data from state:', e);
+            }
+          }
+        }
+        
+        // If not in state, fetch from API
+        if (!localOrderData) {
+          try {
+            const localOrderResponse = await getLocalOrder(id);
           // console.log('=== LOCAL ORDER RESPONSE ===');
           // console.log('Full response:', JSON.stringify(localOrderResponse, null, 2));
           // console.log('Response type:', typeof localOrderResponse);
@@ -334,16 +384,17 @@ const LocalOrderAssign = () => {
           // console.log('Error:', error);
           // console.log('Error message:', error.message);
           // console.log('Will try flight assignment or initialize fresh');
+          }
         }
 
         // If we have local order data, use it
-        if (localOrderData && localOrderData.productAssignments) {
+        // Handle both camelCase and snake_case property names
+        const productAssignments = localOrderData?.productAssignments || localOrderData?.product_assignments;
+        const deliveryRoutesData = localOrderData?.deliveryRoutes || localOrderData?.delivery_routes;
+        const summaryDataFromLocal = localOrderData?.summaryData || localOrderData?.summary_data;
+        
+        if (localOrderData && productAssignments) {
           // console.log('Loading from local order data');
-
-          // Set collection type
-          if (localOrderData.collectionType) {
-            setSelectedType(localOrderData.collectionType);
-          }
 
           // Get order items
           let items = [];
@@ -384,7 +435,7 @@ const LocalOrderAssign = () => {
             });
 
             // Apply saved assignments to rows
-            const assignments = localOrderData.productAssignments || [];
+            const assignments = Array.isArray(productAssignments) ? productAssignments : [];
             const assignmentsByOiid = {};
 
             assignments.forEach(assignment => {
@@ -409,10 +460,7 @@ const LocalOrderAssign = () => {
                 row.entityType = firstAssignment.entityType || '';
                 row.assignedQty = parseFloat(firstAssignment.assignedQty) || 0;
                 row.assignedBoxes = parseFloat(firstAssignment.assignedBoxes) || 0; // Add assignedBoxes field
-                row.price = parseFloat(firstAssignment.price) || 0;
                 row.assignedTo = firstAssignment.assignedTo || '';
-                row.tapeColor = firstAssignment.tapeColor || '';
-                row.place = firstAssignment.place || ''; // Add place field
 
                 // console.log(`  Main assignment:`, {
                 //   entityType: row.entityType,
@@ -511,9 +559,9 @@ const LocalOrderAssign = () => {
             }
 
             // Restore delivery routes
-            if (localOrderData.deliveryRoutes) {
+            if (deliveryRoutesData) {
               // Transform the routes to ensure labours is an array
-              const transformedRoutes = localOrderData.deliveryRoutes.map(route => {
+              const transformedRoutes = (Array.isArray(deliveryRoutesData) ? deliveryRoutesData : []).map(route => {
                 let labours = [];
 
                 // Check if labours already exists as an array
@@ -544,9 +592,9 @@ const LocalOrderAssign = () => {
             }
 
             // Restore assignment statuses
-            if (localOrderData.summaryData?.driverAssignments) {
+            if (summaryDataFromLocal?.driverAssignments) {
               const statusMap = {};
-              localOrderData.summaryData.driverAssignments.forEach(assignment => {
+              summaryDataFromLocal.driverAssignments.forEach(assignment => {
                 assignment.assignments?.forEach(item => {
                   let routeId;
 
@@ -562,7 +610,12 @@ const LocalOrderAssign = () => {
 
                   //console.log('Restoring status for routeId:', routeId, 'Status:', item.status);
 
-                  statusMap[routeId] = item.status || '';
+                  // Normalize status to lowercase (handle both "Completed" and "completed")
+                  let normalizedStatus = item.status || '';
+                  if (normalizedStatus && typeof normalizedStatus === 'string') {
+                    normalizedStatus = normalizedStatus.toLowerCase() === 'completed' ? 'completed' : normalizedStatus;
+                  }
+                  statusMap[routeId] = normalizedStatus;
                   if (item.dropDriver) {
                     statusMap[`${routeId}-dropDriver`] = item.dropDriver;
                   }
@@ -581,10 +634,6 @@ const LocalOrderAssign = () => {
           try {
             const assignmentResponse = await getOrderAssignment(id);
             const assignmentData = assignmentResponse.data;
-
-            if (assignmentData.collection_type) {
-              setSelectedType(assignmentData.collection_type);
-            }
 
             // Load delivery routes if they exist
             let savedDeliveryRoutes = [];
@@ -885,56 +934,65 @@ const LocalOrderAssign = () => {
         return null;
       };
 
-      // Merge main assignments and remaining assignments
-      const mergedAssignments = productRows.map(row => ({
-        ...row,
-        entityId: getEntityId(row.entityType, row.assignedTo)
+      // Process product assignments according to backend structure
+      const processedAssignments = productRows.map(row => ({
+        id: row.id,
+        product: row.product_name || row.product || '',
+        product_name: row.product_name || row.product || '',
+        entityType: row.entityType || '',
+        entityId: getEntityId(row.entityType, row.assignedTo),
+        assignedTo: row.assignedTo || '',
+        assignedQty: parseFloat(row.assignedQty) || 0,
+        assignedBoxes: parseInt(row.assignedBoxes) || 0,
+        price: parseFloat(row.price) || 0,
+        place: row.place || '',
+        tapeColor: row.tapeColor || ''
       }));
 
+      // Add remaining assignments
       Object.entries(remainingRowAssignments).forEach(([key, remainingData]) => {
         if (remainingData.assignedTo && remainingData.assignedQty) {
           const originalId = key.split('-remaining')[0];
-          const originalIndex = mergedAssignments.findIndex(row => row.id == originalId);
+          const originalRow = productRows.find(row => String(row.id) === String(originalId));
 
-          if (originalIndex !== -1) {
-            mergedAssignments.push({
-              ...mergedAssignments[originalIndex],
+          if (originalRow) {
+            processedAssignments.push({
               id: originalId,
-              assignedTo: remainingData.assignedTo,
-              entityType: remainingData.entityType,
+              product: originalRow.product_name || originalRow.product || '',
+              product_name: originalRow.product_name || originalRow.product || '',
+              entityType: remainingData.entityType || '',
               entityId: getEntityId(remainingData.entityType, remainingData.assignedTo),
-              assignedQty: remainingData.assignedQty,
-              assignedBoxes: remainingData.assignedBoxes || 0,
-              price: remainingData.price,
-              tapeColor: remainingData.tapeColor || '',
-              place: remainingData.place || '' // Add place field
+              assignedTo: remainingData.assignedTo || '',
+              assignedQty: parseFloat(remainingData.assignedQty) || 0,
+              assignedBoxes: parseInt(remainingData.assignedBoxes) || 0,
+              price: parseFloat(remainingData.price) || 0,
+              place: remainingData.place || '',
+              tapeColor: remainingData.tapeColor || ''
             });
           }
         }
       });
 
-      // Add driver, labours, and status information to delivery routes
-      const routesWithDrivers = deliveryRoutes.map(route => {
-        const status = assignmentStatuses[route.routeId] || '';
+      // Process delivery routes according to backend structure
+      // For LOCAL BOX ORDER, allow routes without labour assignment
+      const processedRoutes = deliveryRoutes.map(route => {
         const laboursArray = route.labours || [];
-
-        const routeData = {
-          ...route,
+        return {
+          routeId: route.routeId || '',
+          sourceId: route.sourceId || '',
+          location: route.location || '',
+          address: route.address || '',
+          product: route.product || '',
+          quantity: parseFloat(route.quantity) || 0,
+          assignedBoxes: parseInt(route.assignedBoxes) || 0,
+          oiid: route.oiid || '',
+          entityType: route.entityType || '',
+          entityId: route.entityId || '',
           driver: route.driver || '',
-          labours: laboursArray, // New format (array)
-          labour: laboursArray.length > 0 ? laboursArray.join(', ') : '', // Old format (string) for backward compatibility
-          place: route.place || '', // Add place field
-          status,
-          dropDriver: status === 'Drop' ? assignmentStatuses[`${route.routeId}-dropDriver`] || '' : '',
-          collectionStatus: status === 'Drop' ? assignmentStatuses[`${route.routeId}-collection`] || '' : ''
+          labour: laboursArray.length > 0 ? laboursArray.join(', ') : '',
+          labours: laboursArray,
+          isRemaining: route.isRemaining || false
         };
-
-        // Log labour data for debugging
-        // console.log(`Route ${route.routeId} labours:`, route.labours, 'Type:', Array.isArray(route.labours) ? 'array' : typeof route.labours);
-        // console.log(`  - Saving as labours (array):`, routeData.labours);
-        // console.log(`  - Saving as labour (string):`, routeData.labour);
-
-        return routeData;
       });
 
       // Generate summary data (same as what's displayed in the UI)
@@ -944,7 +1002,11 @@ const LocalOrderAssign = () => {
           driver: group.driver,
           totalWeight: parseFloat(group.assignments.reduce((sum, a) => sum + parseFloat(a.quantity), 0).toFixed(2)),
           assignments: group.assignments.map(a => {
-            const status = assignmentStatuses[a.routeId] || '';
+            let status = assignmentStatuses[a.routeId] || '';
+            // Normalize status to lowercase for consistency (handle both "Completed" and "completed")
+            if (status && typeof status === 'string') {
+              status = status.toLowerCase() === 'completed' ? 'completed' : status;
+            }
             return {
               product: a.product,
               entityType: a.entityType,
@@ -954,7 +1016,7 @@ const LocalOrderAssign = () => {
               quantity: parseFloat(a.quantity),
               isRemaining: a.isRemaining || false,
               oiid: a.oiid,
-              status,
+              status: status,
               dropDriver: status === 'Drop' ? assignmentStatuses[`${a.routeId}-dropDriver`] || '' : '',
               collectionStatus: status === 'Drop' ? assignmentStatuses[`${a.routeId}-collection`] || '' : ''
             };
@@ -968,10 +1030,13 @@ const LocalOrderAssign = () => {
           .toFixed(2))
       } : null;
 
+      // Determine order type based on whether it's a box-based order
+      const orderType = isBoxBasedOrder ? 'LOCAL BOX ORDER' : 'LOCAL GRADE ORDER';
+
       const localOrderData = {
-        collectionType: selectedType,
-        productAssignments: mergedAssignments,
-        deliveryRoutes: routesWithDrivers,
+        orderType: orderType,
+        productAssignments: processedAssignments,
+        deliveryRoutes: processedRoutes,
         summaryData: summaryData
       };
 
@@ -990,8 +1055,12 @@ const LocalOrderAssign = () => {
       const response = await saveLocalOrder(id, localOrderData);
       // console.log('Local order saved:', response);
 
-      alert('Local order assignment saved successfully!');
-      navigate('/order-assign');
+      if (response && response.success) {
+        alert(response.message || 'Local order assignment saved successfully!');
+        navigate('/order-assign');
+      } else {
+        alert('Failed to save local order assignment. Please try again.');
+      }
     } catch (error) {
       console.error('Error saving local order:', error);
       alert('Failed to save local order assignment. Please try again.');
@@ -1144,18 +1213,7 @@ const LocalOrderAssign = () => {
       {/* Stage 1 Section */}
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-2">
-          <h2 className="text-lg font-semibold text-gray-900">Stage 1: Product Collection from Sources(Box/Bag)</h2>
-          <div className="relative">
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="appearance-none px-4 py-2 pr-10 bg-white border-2 border-emerald-600 text-emerald-700 rounded-lg font-medium cursor-pointer hover:bg-emerald-50 transition-colors outline-none"
-            >
-              <option value="Box">Box</option>
-              <option value="Bag">Bag</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-emerald-700 pointer-events-none" />
-          </div>
+          <h2 className="text-lg font-semibold text-gray-900">Stage 1: Product Collection from Sources</h2>
         </div>
         <p className="text-sm text-gray-600 mb-6">Assign order products to farmers, suppliers, and third parties for collection and delivery to packaging location</p>
 
@@ -1213,7 +1271,7 @@ const LocalOrderAssign = () => {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Entity Type <span className="text-red-500">*</span></th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Name <span className="text-red-500">*</span></th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Place</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Entity Stock</th>
+                {/* <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Entity Stock</th> */}
                 {isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Picked No of Boxes/Bags</th>}
                 {!isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Picked Qty</th>}
               </tr>
@@ -1367,26 +1425,6 @@ const LocalOrderAssign = () => {
                         <option value="Farmer place">Farmer place</option>
                         <option value="Own place">Own place</option>
                       </select>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        {(() => {
-                          const productName = (row.product_name || row.product)?.replace(/^\d+\s*-\s*/, '');
-                          const entityStock = availableStock[productName] || 0;
-                          return (
-                            <>
-                              <span className={`text-sm font-semibold ${entityStock > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
-                                {entityStock > 0 ? `${entityStock.toFixed(2)} kg` : 'No stock'}
-                              </span>
-                              {entityStock > 0 && (
-                                <div className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
-                                  Available
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
                     </td>
                     {isBoxBasedOrder && (
                       <td className="px-4 py-4">
@@ -1785,45 +1823,55 @@ const LocalOrderAssign = () => {
                   <td className="px-4 py-4">
                     <div className="relative">
                       <button
+                        ref={(el) => { labourButtonRefs.current[route.routeId] = el; }}
                         type="button"
                         onClick={() => setLabourDropdownOpen(prev => ({ ...prev, [route.routeId]: !prev[route.routeId] }))}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm text-left bg-white hover:bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none flex items-center justify-between ${(!route.labours || route.labours.length === 0)
-                          ? 'border-orange-300 bg-orange-50'
-                          : 'border-gray-300'
-                          }`}
+                        className="min-w-[150px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none flex items-center justify-between"
                       >
-                        <span className={(!route.labours || route.labours.length === 0) ? 'text-orange-600 font-medium' : 'text-gray-700'}>
+                        <span className="text-gray-700">
                           {(!route.labours || route.labours.length === 0)
-                            ? 'No labours assigned'
+                            ? 'Select labours...'
                             : `${route.labours.length} labour${route.labours.length > 1 ? 's' : ''} selected`}
                         </span>
                         <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${labourDropdownOpen[route.routeId] ? 'rotate-180' : ''}`} />
                       </button>
                       {labourDropdownOpen[route.routeId] && (
-                        <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto border border-gray-300 rounded-lg bg-white shadow-lg">
-                          {assignmentOptions.labours && Array.isArray(assignmentOptions.labours) && assignmentOptions.labours.map(labour => (
-                            <label key={`labour-${labour.lid}`} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={(route.labours || []).includes(labour.full_name)}
-                                onChange={(e) => {
-                                  const updatedRoutes = [...deliveryRoutes];
-                                  const currentLabours = updatedRoutes[index].labours || [];
-                                  if (e.target.checked) {
-                                    updatedRoutes[index].labours = [...currentLabours, labour.full_name];
-                                  } else {
-                                    updatedRoutes[index].labours = currentLabours.filter(l => l !== labour.full_name);
-                                  }
-                                  setDeliveryRoutes(updatedRoutes);
-                                }}
-                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                              />
-                              <span className="text-sm text-gray-900">{labour.full_name}</span>
-                            </label>
-                          ))}
-                          {(!assignmentOptions.labours || assignmentOptions.labours.length === 0) && (
-                            <p className="text-sm text-gray-500 px-3 py-2">No labours available</p>
-                          )}
+                        <div className="absolute z-10 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg">
+                          <div className="max-h-64 overflow-y-auto">
+                            <table className="w-full">
+                              <tbody className="divide-y divide-gray-200">
+                                {assignmentOptions.labours && Array.isArray(assignmentOptions.labours) && assignmentOptions.labours.map(labour => (
+                                  <tr key={`labour-${labour.lid}`} className="hover:bg-gray-50 cursor-pointer">
+                                    <td className="px-3 py-2">
+                                      <label className="flex items-center gap-2 cursor-pointer w-full">
+                                        <input
+                                          type="checkbox"
+                                          checked={(route.labours || []).includes(labour.full_name)}
+                                          onChange={(e) => {
+                                            const updatedRoutes = [...deliveryRoutes];
+                                            const currentLabours = updatedRoutes[index].labours || [];
+                                            if (e.target.checked) {
+                                              updatedRoutes[index].labours = [...currentLabours, labour.full_name];
+                                            } else {
+                                              updatedRoutes[index].labours = currentLabours.filter(l => l !== labour.full_name);
+                                            }
+                                            setDeliveryRoutes(updatedRoutes);
+                                          }}
+                                          className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                        />
+                                        <span className="text-sm text-gray-900">{labour.full_name}</span>
+                                      </label>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {(!assignmentOptions.labours || assignmentOptions.labours.length === 0) && (
+                              <div className="px-3 py-2">
+                                <p className="text-sm text-gray-500">No labours available</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                       {route.labours && route.labours.length > 0 && (
@@ -1923,38 +1971,55 @@ const LocalOrderAssign = () => {
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Assigned Labour</label>
                   <div className="relative">
                     <button
+                      ref={(el) => { labourButtonRefs.current[route.routeId] = el; }}
                       type="button"
                       onClick={() => setLabourDropdownOpen(prev => ({ ...prev, [route.routeId]: !prev[route.routeId] }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left bg-white hover:bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none flex items-center justify-between"
+                      className="min-w-[150px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none flex items-center justify-between"
                     >
-                      <span className="text-gray-700">Select labours...</span>
+                      <span className="text-gray-700">
+                        {(!route.labours || route.labours.length === 0)
+                          ? 'Select labours...'
+                          : `${route.labours.length} labour${route.labours.length > 1 ? 's' : ''} selected`}
+                      </span>
                       <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${labourDropdownOpen[route.routeId] ? 'rotate-180' : ''}`} />
                     </button>
                     {labourDropdownOpen[route.routeId] && (
-                      <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto border border-gray-300 rounded-lg bg-white shadow-lg">
-                        {assignmentOptions.labours && Array.isArray(assignmentOptions.labours) && assignmentOptions.labours.map(labour => (
-                          <label key={`labour-${labour.lid}`} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(route.labours || []).includes(labour.full_name)}
-                              onChange={(e) => {
-                                const updatedRoutes = [...deliveryRoutes];
-                                const currentLabours = updatedRoutes[index].labours || [];
-                                if (e.target.checked) {
-                                  updatedRoutes[index].labours = [...currentLabours, labour.full_name];
-                                } else {
-                                  updatedRoutes[index].labours = currentLabours.filter(l => l !== labour.full_name);
-                                }
-                                setDeliveryRoutes(updatedRoutes);
-                              }}
-                              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                            />
-                            <span className="text-sm text-gray-900">{labour.full_name}</span>
-                          </label>
-                        ))}
-                        {(!assignmentOptions.labours || assignmentOptions.labours.length === 0) && (
-                          <p className="text-sm text-gray-500 px-3 py-2">No labours available</p>
-                        )}
+                      <div className="absolute z-10 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg">
+                        <div className="max-h-64 overflow-y-auto">
+                          <table className="w-full">
+                            <tbody className="divide-y divide-gray-200">
+                              {assignmentOptions.labours && Array.isArray(assignmentOptions.labours) && assignmentOptions.labours.map(labour => (
+                                <tr key={`labour-${labour.lid}`} className="hover:bg-gray-50 cursor-pointer">
+                                  <td className="px-3 py-2">
+                                    <label className="flex items-center gap-2 cursor-pointer w-full">
+                                      <input
+                                        type="checkbox"
+                                        checked={(route.labours || []).includes(labour.full_name)}
+                                        onChange={(e) => {
+                                          const updatedRoutes = [...deliveryRoutes];
+                                          const currentLabours = updatedRoutes[index].labours || [];
+                                          if (e.target.checked) {
+                                            updatedRoutes[index].labours = [...currentLabours, labour.full_name];
+                                          } else {
+                                            updatedRoutes[index].labours = currentLabours.filter(l => l !== labour.full_name);
+                                          }
+                                          setDeliveryRoutes(updatedRoutes);
+                                        }}
+                                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                      />
+                                      <span className="text-sm text-gray-900">{labour.full_name}</span>
+                                    </label>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {(!assignmentOptions.labours || assignmentOptions.labours.length === 0) && (
+                            <div className="px-3 py-2">
+                              <p className="text-sm text-gray-500">No labours available</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                     {route.labours && route.labours.length > 0 && (
@@ -2092,6 +2157,7 @@ const LocalOrderAssign = () => {
                                 <option value="">Select...</option>
                                 <option value="Drop">Drop</option>
                                 <option value="Picked and Packed">Picked and Packed</option>
+                                <option value="completed">Completed</option>
                               </select>
                               {assignmentStatuses[assignment.routeId] === 'Drop' && (
                                 <div className="mt-2 space-y-2">
@@ -2187,6 +2253,7 @@ const LocalOrderAssign = () => {
                               <option value="">Select...</option>
                               <option value="Drop">Drop</option>
                               <option value="Picked and Packed">Picked and Packed</option>
+                              <option value="completed">Completed</option>
                             </select>
                             {assignmentStatuses[assignment.routeId] === 'Drop' && (
                               <div className="mt-2 space-y-2">

@@ -35,6 +35,7 @@ const OrderAssignCreateStage4 = () => {
     const [availableStock, setAvailableStock] = useState({});
     const [farmerAvailability, setFarmerAvailability] = useState({});
     const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
+    const [stage4Status, setStage4Status] = useState(null); // Store stage4_status from assignment data
 
     // Helper function to check if price was updated today
     const getTodaysMarketPrice = (product) => {
@@ -268,6 +269,11 @@ const OrderAssignCreateStage4 = () => {
                 try {
                     const assignmentResponse = await getOrderAssignment(id);
                     const assignmentData = assignmentResponse.data;
+
+                    // Store stage4_status from assignment data
+                    if (assignmentData.stage4_status) {
+                        setStage4Status(assignmentData.stage4_status);
+                    }
 
                     // Update orderDetails with order_auto_id from assignment data
                     if (assignmentData.order_auto_id && orderDetails) {
@@ -959,12 +965,14 @@ const OrderAssignCreateStage4 = () => {
                                 <td className="px-4 py-3 text-sm text-left text-gray-900">{orderDetails?.customer_name || 'N/A'}</td>
                                 <td className="px-4 py-3 text-sm text-left text-gray-900">{orderDetails?.items?.length || 0} Items</td>
                                 <td className="px-4 py-3">
-                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${orderDetails?.order_status === 'pending' ? 'bg-purple-100 text-purple-700' :
-                                        orderDetails?.order_status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
-                                            orderDetails?.order_status === 'delivered' ? 'bg-emerald-600 text-white' :
-                                                'bg-gray-100 text-gray-700'
-                                        }`}>
-                                        {orderDetails?.order_status ? orderDetails.order_status.charAt(0).toUpperCase() + orderDetails.order_status.slice(1) : 'N/A'}
+                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                                        stage4Status === 'pending' ? 'bg-purple-100 text-purple-700' :
+                                        stage4Status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
+                                        stage4Status === 'completed' ? 'bg-emerald-600 text-white' :
+                                        stage4Status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-gray-100 text-gray-700'
+                                    }`}>
+                                        {stage4Status ? stage4Status.charAt(0).toUpperCase() + stage4Status.slice(1).replace('_', ' ') : (orderDetails?.order_status ? orderDetails.order_status.charAt(0).toUpperCase() + orderDetails.order_status.slice(1) : 'N/A')}
                                     </span>
                                 </td>
                             </tr>
@@ -1007,7 +1015,7 @@ const OrderAssignCreateStage4 = () => {
                     <h2 className="text-lg font-semibold text-gray-900">Stage 4: Review - Product Collection from Sources</h2>
 
                     {/* Collection Type Dropdown */}
-                    <div className="flex items-center gap-3">
+                    {/* <div className="flex items-center gap-3">
                         <label className="text-sm font-medium text-gray-700">Collection Type:</label>
                         <div className="relative">
                             <select
@@ -1021,7 +1029,7 @@ const OrderAssignCreateStage4 = () => {
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-emerald-700 pointer-events-none" />
                         </div>
-                    </div>
+                    </div> */}
                 </div>
                 <p className="text-sm text-gray-600 mb-6">Assign order products to farmers, suppliers, and third parties for collection and delivery to packaging location</p>
 

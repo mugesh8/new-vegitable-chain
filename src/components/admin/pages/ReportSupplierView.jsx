@@ -680,9 +680,6 @@ const ReportSupplierView = () => {
                         >
                             <ArrowLeft className="text-[#0D8568]" size={24} />
                         </button>
-                        <div className="bg-[#E8F5F1] p-3 rounded-xl">
-                            <span className="text-2xl">🚛</span>
-                        </div>
                         <div>
                             <h1 className="text-2xl font-bold text-[#0D5C4D]">Supplier Details</h1>
                             <p className="text-[#6B8782]">View detailed information about this supplier</p>

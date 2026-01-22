@@ -8,6 +8,7 @@ import { getAllThirdParties } from '../../../api/thirdPartyApi';
 import { getAllLabours } from '../../../api/labourApi';
 import { getAllFuelExpenses } from '../../../api/fuelExpenseApi';
 import { getOrderAssignment } from '../../../api/orderAssignmentApi';
+import { getAllDrivers } from '../../../api/driverApi';
 
 const ReportManagement = () => {
   const navigate = useNavigate();
@@ -37,13 +38,14 @@ const ReportManagement = () => {
     const fetchAllData = async () => {
       try {
         setLoading(true);
-        const [ordersRes, farmersRes, suppliersRes, thirdPartiesRes, laboursRes, fuelRes] = await Promise.all([
+        const [ordersRes, farmersRes, suppliersRes, thirdPartiesRes, laboursRes, fuelRes, driversRes] = await Promise.all([
           getAllOrders(),
           getAllFarmers(),
           getAllSuppliers(),
           getAllThirdParties(),
           getAllLabours(1, 1000),
-          getAllFuelExpenses().catch(() => ({ data: [] }))
+          getAllFuelExpenses().catch(() => ({ data: [] })),
+          getAllDrivers().catch(() => ({ data: [] }))
         ]);
 
         let orders = ordersRes?.data || [];
@@ -52,6 +54,7 @@ const ReportManagement = () => {
         const thirdParties = thirdPartiesRes?.data || [];
         const labours = laboursRes?.labours || (Array.isArray(laboursRes) ? laboursRes : laboursRes?.data || []);
         let fuelExpenses = fuelRes?.data || (Array.isArray(fuelRes) ? fuelRes : []);
+        const drivers = driversRes?.data || (Array.isArray(driversRes) ? driversRes : []);
 
         // --- FILTER LOGIC ---
         // Filter Orders by Date
@@ -99,7 +102,7 @@ const ReportManagement = () => {
               assignments = typeof assignmentRes.data.product_assignments === 'string'
                 ? JSON.parse(assignmentRes.data.product_assignments)
                 : assignmentRes.data.product_assignments;
-            } catch (e) {
+            } catch {
               return;
             }
 
@@ -115,7 +118,7 @@ const ReportManagement = () => {
                   stage4ProductRows = stage4Data.reviewData.productRows;
                 }
               }
-            } catch (e) {
+            } catch {
               // ignore
             }
 
@@ -184,6 +187,7 @@ const ReportManagement = () => {
           payouts: totalPayoutAmount,
           labourers: labours.length,
           invoices: orders.length,
+          drivers: drivers.length,
 
           totalGoodsValue: totalPayoutAmount,
           totalExpenses: totalExpenses, // Currently mostly fuel
@@ -280,6 +284,17 @@ const ReportManagement = () => {
       iconColor: 'text-pink-500',
       path: '/reports/invoice',
       type: 'financial'
+    },
+    {
+      title: 'Driver Report',
+      description: 'Driver details, KM records, and fuel expenses',
+      metric: `Active Drivers: ${loading ? '...' : stats.drivers || 0}`,
+      link: 'View Report →',
+      icon: Briefcase,
+      bgColor: 'bg-blue-50',
+      iconColor: 'text-blue-500',
+      path: '/reports/driver',
+      type: 'operations'
     }
   ];
 

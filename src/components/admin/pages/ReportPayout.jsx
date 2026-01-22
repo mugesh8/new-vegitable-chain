@@ -6,6 +6,12 @@ import { getOrderAssignment } from '../../../api/orderAssignmentApi';
 import { getAllFarmers } from '../../../api/farmerApi';
 import { getAllSuppliers } from '../../../api/supplierApi';
 import { getAllThirdParties } from '../../../api/thirdPartyApi';
+import { getAllDrivers } from '../../../api/driverApi';
+import { getAllLabours } from '../../../api/labourApi';
+import { getAllDriverRates } from '../../../api/driverRateApi';
+import { getAllExcessKMs } from '../../../api/excessKmApi';
+import { getAllLabourRates } from '../../../api/labourRateApi';
+import { getAllLabourExcessPay } from '../../../api/labourExcessPayApi';
 import * as XLSX from 'xlsx-js-style';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -16,7 +22,7 @@ const ReportPayout = () => {
   const [loading, setLoading] = useState(true);
   const [allPayouts, setAllPayouts] = useState([]);
   const [filters, setFilters] = useState({
-    type: 'all', // 'all', 'farmer', 'supplier', 'thirdParty'
+    type: 'all', // 'all', 'farmer', 'supplier', 'thirdParty', 'driver', 'labour'
     status: 'all', // 'all', 'paid', 'unpaid'
     dateFrom: '',
     dateTo: ''
@@ -31,23 +37,29 @@ const ReportPayout = () => {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [ordersRes, farmersRes, suppliersRes, thirdPartiesRes] = await Promise.all([
+      const [ordersRes, farmersRes, suppliersRes, thirdPartiesRes, driversRes, laboursRes] = await Promise.all([
         getAllOrders(),
         getAllFarmers(),
         getAllSuppliers(),
-        getAllThirdParties()
+        getAllThirdParties(),
+        getAllDrivers().catch(() => ({ data: [] })),
+        getAllLabours(1, 1000).catch(() => ({ data: [] }))
       ]);
 
       const orders = ordersRes?.data || [];
       const farmers = farmersRes?.data || [];
       const suppliers = suppliersRes?.data || [];
       const thirdParties = thirdPartiesRes?.data || [];
+      const drivers = driversRes?.data || driversRes || [];
+      const labours = laboursRes?.data || laboursRes?.labours || [];
 
       // Helper to lookup names
       const getEntityName = (type, id) => {
         if (type === 'farmer') return farmers.find(f => f.fid == id)?.farmer_name || 'Unknown Farmer';
         if (type === 'supplier') return suppliers.find(s => s.sid == id)?.supplier_name || 'Unknown Supplier';
         if (type === 'thirdParty') return thirdParties.find(t => t.tpid == id)?.third_party_name || 'Unknown Third Party';
+        if (type === 'driver') return drivers.find(d => d.did == id)?.driver_name || 'Unknown Driver';
+        if (type === 'labour') return labours.find(l => l.lid == id)?.full_name || labours.find(l => l.lid == id)?.name || 'Unknown Labour';
         return 'Unknown';
       };
 
@@ -72,7 +84,7 @@ const ReportPayout = () => {
             assignments = typeof assignmentRes.data.product_assignments === 'string'
               ? JSON.parse(assignmentRes.data.product_assignments)
               : assignmentRes.data.product_assignments;
-          } catch (e) {
+          } catch {
             return;
           }
 
@@ -169,6 +181,594 @@ const ReportPayout = () => {
 
       await Promise.all(assignmentPromises);
 
+      // Fetch and process Driver Payouts
+      try {
+        const [driverRatesRes, excessKMsRes] = await Promise.all([
+          getAllDriverRates().catch(() => []),
+          getAllExcessKMs().catch(() => ({ data: [] }))
+        ]);
+
+        const driverRates = Array.isArray(driverRatesRes) ? driverRatesRes : (driverRatesRes?.data || []);
+        const excessKMs = Array.isArray(excessKMsRes) ? excessKMsRes : (excessKMsRes?.data || []);
+
+        const ratesMap = {};
+        driverRates.forEach(rate => {
+          if (rate.status === 'Active') {
+            const deliveryType = (rate.deliveryType || rate.delivery_type || '').toLowerCase();
+            if (deliveryType) {
+              ratesMap[deliveryType] = parseFloat(rate.amount || rate.rate || 0) || 0;
+            }
+          }
+        });
+
+        // Map excess KM by driver ID (including dates)
+        const excessKMMap = {};
+        excessKMs.forEach(km => {
+          const driverId = String(km.driver_id || km.did || km.driver?.did || '');
+          if (driverId) {
+            if (!excessKMMap[driverId]) {
+              excessKMMap[driverId] = { totalKM: 0, amount: 0, days: new Set() };
+            }
+            excessKMMap[driverId].totalKM += parseFloat(km.kilometers || 0);
+            excessKMMap[driverId].amount += parseFloat(km.amount || 0);
+            if (km.date) {
+              try {
+                const dateStr = new Date(km.date).toISOString().split('T')[0];
+                excessKMMap[driverId].days.add(dateStr);
+              } catch {
+                excessKMMap[driverId].days.add(String(km.date));
+              }
+            }
+          }
+        });
+
+        // Aggregate driver wages from Stage 3
+        const wagesByDriverId = {};
+        const workDaysByDriverId = {};
+
+        const driverAssignmentPromises = orders.map(async (order) => {
+          try {
+            const assignmentRes = await getOrderAssignment(order.oid).catch(() => null);
+            if (!assignmentRes?.data) return;
+
+            const orderDate = order.order_received_date || order.createdAt;
+            const dateStr = orderDate ? new Date(orderDate).toISOString().split('T')[0] : '';
+
+            // Check Stage 1 for driver assignments in delivery routes
+            let stage1Data = null;
+            try {
+              if (assignmentRes.data.stage1_data) {
+                stage1Data = typeof assignmentRes.data.stage1_data === 'string'
+                  ? JSON.parse(assignmentRes.data.stage1_data)
+                  : assignmentRes.data.stage1_data;
+              } else if (assignmentRes.data.product_assignments) {
+                // Sometimes stage1 data is stored in product_assignments
+                const assignments = typeof assignmentRes.data.product_assignments === 'string'
+                  ? JSON.parse(assignmentRes.data.product_assignments)
+                  : assignmentRes.data.product_assignments;
+                if (Array.isArray(assignments) && assignments.length > 0) {
+                  stage1Data = { deliveryRoutes: [] };
+                }
+              }
+            } catch {
+              // Ignore stage1 parsing errors
+            }
+
+            // Process Stage 1 delivery routes
+            if (stage1Data?.deliveryRoutes) {
+              stage1Data.deliveryRoutes.forEach(route => {
+                const driverName = route.driver || '';
+                if (!driverName) return;
+
+                // Extract driver name (format might be "Name - DRV-001")
+                const nameParts = driverName.split(' - ');
+                const cleanDriverName = nameParts[0].trim();
+
+                const driver = drivers.find(d => 
+                  (d.driver_name || '').toLowerCase() === cleanDriverName.toLowerCase() ||
+                  (d.driver_id || '').toLowerCase() === (nameParts[1] || '').toLowerCase()
+                );
+
+                if (!driver) return;
+
+                const driverId = String(driver.did);
+                if (!wagesByDriverId[driverId]) {
+                  wagesByDriverId[driverId] = 0;
+                  workDaysByDriverId[driverId] = new Set();
+                }
+                // Add a base wage for the route (can be calculated from distance or use default)
+                const routeWage = parseFloat(route.driverWage || route.amount || 0) || 0;
+                wagesByDriverId[driverId] += routeWage;
+                if (dateStr) {
+                  workDaysByDriverId[driverId].add(dateStr);
+                }
+              });
+            }
+
+            // Check Stage 3 for driver assignments
+            let stage3Data = null;
+            try {
+              if (assignmentRes.data.stage3_summary_data) {
+                stage3Data = typeof assignmentRes.data.stage3_summary_data === 'string'
+                  ? JSON.parse(assignmentRes.data.stage3_summary_data)
+                  : assignmentRes.data.stage3_summary_data;
+              } else if (assignmentRes.data.stage3_data) {
+                stage3Data = typeof assignmentRes.data.stage3_data === 'string'
+                  ? JSON.parse(assignmentRes.data.stage3_data)
+                  : assignmentRes.data.stage3_data;
+              }
+            } catch (e) {
+              console.error('Error parsing stage3 data:', e);
+            }
+
+            // Only process Stage 3 if we have stage3Data
+            // If we don't have stage3Data but have stage1Data, we've already processed it above
+            if (!stage3Data) return;
+            
+            const airportGroups = stage3Data.summaryData?.airportGroups || stage3Data.airportGroups || {};
+            const driverAssignments = stage3Data.summaryData?.driverAssignments || [];
+            const products = stage3Data.products || [];
+
+            // Process driverAssignments (for work days tracking)
+            driverAssignments.forEach(assignment => {
+              const driverName = assignment.driver || '';
+              if (!driverName) return;
+
+              const nameParts = driverName.split(' - ');
+              const cleanDriverName = nameParts[0].trim();
+
+              const driver = drivers.find(d => 
+                (d.driver_name || '').toLowerCase() === cleanDriverName.toLowerCase() ||
+                (d.driver_id || '').toLowerCase() === (nameParts[1] || '').toLowerCase() ||
+                String(d.did) === String(assignment.driverId || '')
+              );
+
+              if (!driver) return;
+
+              const driverId = String(driver.did);
+              if (!wagesByDriverId[driverId]) {
+                wagesByDriverId[driverId] = 0;
+                workDaysByDriverId[driverId] = new Set();
+              }
+              if (dateStr) {
+                workDaysByDriverId[driverId].add(dateStr);
+              }
+            });
+
+            // Process airport groups
+            Object.values(airportGroups).forEach(group => {
+              let driverName = group.driver || group.driverName || '';
+              
+              // Also check products within the group for driver assignments
+              if (!driverName && group.products && Array.isArray(group.products)) {
+                for (const product of group.products) {
+                  const productDriver = product.driver || product.selectedDriver || product.driverName || '';
+                  if (productDriver) {
+                    driverName = productDriver;
+                    break; // Use first driver found in products
+                  }
+                }
+              }
+              
+              if (!driverName) return;
+
+              // Find driver by name - try multiple matching strategies
+              let driver = null;
+              
+              // Try exact name match
+              driver = drivers.find(d => 
+                (d.driver_name || '').toLowerCase() === driverName.toLowerCase()
+              );
+              
+              // If not found, try matching with driver ID format "Name - DRV-001"
+              if (!driver && driverName.includes(' - ')) {
+                const nameParts = driverName.split(' - ');
+                const cleanName = nameParts[0].trim();
+                const driverIdPart = nameParts[1]?.trim();
+                
+                driver = drivers.find(d => 
+                  (d.driver_name || '').toLowerCase() === cleanName.toLowerCase() ||
+                  (d.driver_id || '').toLowerCase() === driverIdPart?.toLowerCase()
+                );
+              }
+              
+              // If still not found, try partial name match
+              if (!driver) {
+                driver = drivers.find(d => 
+                  (d.driver_name || '').toLowerCase().includes(driverName.toLowerCase()) ||
+                  driverName.toLowerCase().includes((d.driver_name || '').toLowerCase())
+                );
+              }
+
+              if (!driver) return;
+
+              const driverId = String(driver.did);
+              const driverWage = parseFloat(group.driverWage || group.pickupCost || 0) || 0;
+
+              if (!wagesByDriverId[driverId]) {
+                wagesByDriverId[driverId] = 0;
+                workDaysByDriverId[driverId] = new Set();
+              }
+
+              wagesByDriverId[driverId] += driverWage;
+              if (dateStr) {
+                workDaysByDriverId[driverId].add(dateStr);
+              }
+            });
+
+            // Process products array for driver assignments
+            products.forEach(product => {
+              let driverName = product.selectedDriver || product.driver || product.driverName || '';
+              
+              // If selectedDriver is a number/ID, try to find driver by did
+              if (!driverName && product.selectedDriver) {
+                const driverById = drivers.find(d => String(d.did) === String(product.selectedDriver));
+                if (driverById) {
+                  driverName = driverById.driver_name;
+                }
+              }
+              
+              if (!driverName) return;
+
+              // Find driver by name or ID - try multiple strategies
+              let driver = null;
+              
+              // If it's a number, try to find by did
+              if (!isNaN(driverName)) {
+                driver = drivers.find(d => String(d.did) === String(driverName));
+              }
+              
+              // Try by driver_id if it contains DRV-
+              if (!driver && typeof driverName === 'string' && driverName.includes('DRV-')) {
+                driver = drivers.find(d => 
+                  (d.driver_id || '').toLowerCase() === driverName.toLowerCase()
+                );
+              }
+              
+              // Try exact name match
+              if (!driver) {
+                driver = drivers.find(d => 
+                  (d.driver_name || '').toLowerCase() === driverName.toLowerCase()
+                );
+              }
+              
+              // Try matching with "Name - DRV-001" format
+              if (!driver && driverName.includes(' - ')) {
+                const nameParts = driverName.split(' - ');
+                const cleanName = nameParts[0].trim();
+                const driverIdPart = nameParts[1]?.trim();
+                
+                driver = drivers.find(d => 
+                  (d.driver_name || '').toLowerCase() === cleanName.toLowerCase() ||
+                  (d.driver_id || '').toLowerCase() === driverIdPart?.toLowerCase()
+                );
+              }
+              
+              // Try partial match as last resort
+              if (!driver) {
+                driver = drivers.find(d => 
+                  (d.driver_name || '').toLowerCase().includes(driverName.toLowerCase()) ||
+                  driverName.toLowerCase().includes((d.driver_name || '').toLowerCase())
+                );
+              }
+
+              if (!driver) return;
+
+              const driverId = String(driver.did);
+              const driverWage = parseFloat(product.driverWage || product.pickupCost || 0) || 0;
+
+              if (!wagesByDriverId[driverId]) {
+                wagesByDriverId[driverId] = 0;
+                workDaysByDriverId[driverId] = new Set();
+              }
+
+              wagesByDriverId[driverId] += driverWage;
+              if (dateStr) {
+                workDaysByDriverId[driverId].add(dateStr);
+              }
+            });
+          } catch (error) {
+            console.error(`Error processing order ${order.oid} for driver payouts:`, error);
+          }
+        });
+
+        await Promise.all(driverAssignmentPromises);
+
+        // Get all unique driver IDs from all sources (wages, work days, excess KM)
+        // Only include drivers who have actual work records
+        const allDriverIds = new Set([
+          ...Object.keys(wagesByDriverId),
+          ...Object.keys(workDaysByDriverId),
+          ...Object.keys(excessKMMap)
+        ]);
+
+        // Create driver payout records - include all drivers with any work
+        allDriverIds.forEach(driverId => {
+          const driver = drivers.find(d => String(d.did) === driverId);
+          if (!driver) return;
+
+          const totalWage = wagesByDriverId[driverId] || 0;
+          const excessKMData = excessKMMap[driverId] || { amount: 0, days: new Set() };
+          const workDays = workDaysByDriverId[driverId];
+          
+          // Get driver rate - try multiple ways (same as PayoutDriver.jsx)
+          const deliveryType = (driver.deliveryType || driver.delivery_type || 'collection').toLowerCase();
+          let rate = ratesMap[deliveryType] || ratesMap['airport'] || ratesMap['collection'] || 0;
+          
+          // If still no rate, try to get from any active rate
+          if (!rate && driverRates.length > 0) {
+            const activeRate = driverRates.find(r => r.status === 'Active');
+            if (activeRate) {
+              rate = parseFloat(activeRate.amount || activeRate.rate || 0) || 0;
+            }
+          }
+          
+          // Final fallback to driver's daily_wage
+          if (!rate) {
+            rate = parseFloat(driver.daily_wage || driver.dailyWage || 0) || 0;
+          }
+          
+          // If still no rate, use a default
+          if (!rate) {
+            rate = 2000; // Default daily wage
+          }
+          
+          // Collect all work dates for display (same as PayoutDriver.jsx)
+          const orderWorkDays = workDays ? workDays : new Set();
+          const allWorkDays = new Set([...orderWorkDays]);
+          
+          // Add excess KM days
+          if (excessKMData.days && excessKMData.days.size > 0) {
+            excessKMData.days.forEach(date => {
+              if (date) {
+                try {
+                  const normalizedDate = new Date(date).toISOString().split('T')[0];
+                  allWorkDays.add(normalizedDate);
+                } catch {
+                  allWorkDays.add(String(date));
+                }
+              }
+            });
+          }
+          
+          // Calculate days worked the same way as PayoutDriver: totalWage / rate, rounded
+          // If no wage from assignments, calculate from work days if available
+          let calculatedWage = totalWage;
+          let daysWorked = 0;
+          
+          if (calculatedWage > 0 && rate > 0) {
+            // Calculate days worked from wage (same as PayoutDriver)
+            daysWorked = Math.round(calculatedWage / rate);
+          } else {
+            daysWorked = allWorkDays.size;
+            
+            // If we have work days but no wage, calculate wage from days
+            if (daysWorked > 0 && rate > 0) {
+              calculatedWage = daysWorked * rate;
+            }
+            
+            // Fallback: if driver has excess KM, count as at least 1 day
+            if (daysWorked === 0) {
+              if (excessKMData.amount > 0) {
+                daysWorked = 1;
+                if (rate > 0) {
+                  calculatedWage = rate;
+                }
+              }
+            }
+          }
+          
+          const excessKMAmount = excessKMData.amount || 0;
+          
+          // Net Amount = Total Wage + Excess KM Amount (same as PayoutDriver)
+          const netAmount = calculatedWage + excessKMAmount;
+
+          // Only include drivers who have actual work (wages, excess KM, or work days)
+          const hasWork = totalWage > 0 || excessKMData.amount > 0 || allWorkDays.size > 0;
+          
+          if (!hasWork) {
+            return; // Skip drivers with no work
+          }
+
+          // Format dates for display (same as PayoutDriver.jsx)
+          // If still no dates but driver has wages, try to get dates from orders
+          if (allWorkDays.size === 0 && (totalWage > 0 || excessKMData.amount > 0)) {
+            // Look through all orders to find dates for this driver
+            const orderDates = [];
+            orders.forEach(order => {
+              const orderDateValue = order.order_received_date || order.createdAt;
+              if (orderDateValue) {
+                try {
+                  const dateStr = new Date(orderDateValue).toISOString().split('T')[0];
+                  orderDates.push(dateStr);
+                } catch {
+                  // Ignore invalid dates
+                }
+              }
+            });
+            // If we found order dates, use the most recent one
+            if (orderDates.length > 0) {
+              const sortedOrderDates = orderDates.sort().reverse();
+              allWorkDays.add(sortedOrderDates[0]); // Use most recent order date
+            }
+          }
+          
+          // Format dates for display (same as PayoutDriver.jsx)
+          let orderDate = null;
+          if (allWorkDays.size > 0) {
+            const sortedDates = Array.from(allWorkDays).sort();
+            if (sortedDates.length === 1) {
+              // Single date - format as YYYY-MM-DD for storage
+              orderDate = sortedDates[0];
+            } else {
+              // Multiple dates - use the most recent one for the report
+              orderDate = sortedDates[sortedDates.length - 1];
+            }
+          }
+          
+          // Final fallback to current date if no dates found
+          if (!orderDate) {
+            orderDate = new Date().toISOString().split('T')[0];
+          }
+          
+          // Ensure date is in proper format (YYYY-MM-DD string)
+          if (orderDate) {
+            try {
+              // If it's already a YYYY-MM-DD string, use it directly
+              if (typeof orderDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(orderDate)) {
+                // Already in correct format, use as-is
+              } else {
+                // Convert to YYYY-MM-DD format
+                const dateObj = new Date(orderDate);
+                if (!isNaN(dateObj.getTime())) {
+                  orderDate = dateObj.toISOString().split('T')[0];
+                } else {
+                  orderDate = new Date().toISOString().split('T')[0];
+                }
+              }
+            } catch {
+              // If parsing fails, use current date
+              orderDate = new Date().toISOString().split('T')[0];
+            }
+          }
+
+          processedPayouts.push({
+            id: `driver_${driverId}`,
+            orderId: '-', // Drivers don't have specific order IDs
+            orderDate: orderDate,
+            entityId: driverId,
+            entityType: 'driver',
+            recipient: driver.driver_name || 'Unknown Driver',
+            amount: netAmount || 0,
+            status: 'Unpaid'
+          });
+        });
+      } catch (error) {
+        console.error('Error processing driver payouts:', error);
+      }
+
+      // Fetch and process Labour Payouts
+      try {
+        const [labourRatesRes, excessPayRes] = await Promise.all([
+          getAllLabourRates().catch(() => []),
+          getAllLabourExcessPay().catch(() => ({ data: [] }))
+        ]);
+
+        const labourRates = Array.isArray(labourRatesRes) ? labourRatesRes : (labourRatesRes?.data || []);
+        const excessPays = excessPayRes?.data || [];
+
+        const ratesMap = {};
+        labourRates.forEach(rate => {
+          if (rate.status === 'Active') {
+            ratesMap[rate.labourType] = parseFloat(rate.amount) || 0;
+          }
+        });
+
+        const excessPayMap = {};
+        excessPays.forEach(pay => {
+          excessPayMap[String(pay.labour_id)] = parseFloat(pay.amount) || 0;
+        });
+
+        // Aggregate wages per labour from Stage 2 summary
+        const wagesByLabourId = {};
+        const workDatesByLabourId = {};
+
+        const labourAssignmentPromises = orders.map(async (order) => {
+          try {
+            const assignmentRes = await getOrderAssignment(order.oid).catch(() => null);
+            if (!assignmentRes?.data?.stage2_summary_data) return;
+
+            const orderDate = order.order_received_date || order.createdAt;
+            const dateStr = orderDate ? new Date(orderDate).toISOString().split('T')[0] : '';
+
+            let summary;
+            try {
+              summary = typeof assignmentRes.data.stage2_summary_data === 'string'
+                ? JSON.parse(assignmentRes.data.stage2_summary_data)
+                : assignmentRes.data.stage2_summary_data;
+            } catch {
+              return;
+            }
+
+            const labourPrices = summary.labourPrices || [];
+            labourPrices.forEach(lp => {
+              const labourId = lp.labourId;
+              const labourName = lp.labourName || lp.labour;
+              if (!labourId && !labourName) return;
+
+              const idKey = labourId ? String(labourId) : null;
+              const wage = parseFloat(lp.totalAmount ?? lp.labourWage ?? 0) || 0;
+
+              if (!wage) return;
+
+              const key = idKey || labourName;
+              if (!wagesByLabourId[key]) {
+                wagesByLabourId[key] = 0;
+                workDatesByLabourId[key] = new Set();
+              }
+              wagesByLabourId[key] += wage;
+              if (dateStr) {
+                workDatesByLabourId[key].add(dateStr);
+              }
+            });
+          } catch (error) {
+            console.error(`Error processing order ${order.oid} for labour payouts:`, error);
+          }
+        });
+
+        await Promise.all(labourAssignmentPromises);
+
+        // Create labour payout records
+        Object.entries(wagesByLabourId).forEach(([key, totalWage]) => {
+          let labour = labours.find(l => String(l.lid) === key);
+          if (!labour) {
+            const normalizedName = key.toLowerCase();
+            labour = labours.find(l =>
+              (l.full_name || l.name || '').trim().toLowerCase() === normalizedName
+            );
+          }
+
+          if (!labour) return;
+
+          const labourId = String(labour.lid);
+          const excessPay = excessPayMap[labourId] || 0;
+          const netAmount = totalWage + excessPay;
+
+          if (netAmount > 0) {
+            // Get the most recent work date for this labour
+            const workDates = workDatesByLabourId[key];
+            let latestDate = null;
+            if (workDates && workDates.size > 0) {
+              // Use the most recent work date
+              const sortedDates = Array.from(workDates).sort().reverse();
+              latestDate = sortedDates[0];
+              // Ensure date is in proper format
+              try {
+                latestDate = new Date(latestDate).toISOString();
+              } catch {
+                // Keep as-is if parsing fails
+              }
+            } else {
+              // Use most recent order date as fallback
+              latestDate = orders.length > 0 ? (orders[0].order_received_date || orders[0].createdAt) : new Date().toISOString();
+            }
+
+            processedPayouts.push({
+              id: `labour_${labourId}`,
+              orderId: '-', // Labour don't have specific order IDs
+              orderDate: latestDate,
+              entityId: labourId,
+              entityType: 'labour',
+              recipient: labour.full_name || labour.name || 'Unknown Labour',
+              amount: netAmount,
+              status: 'Unpaid'
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Error processing labour payouts:', error);
+      }
+
       // Sort by date newest first
       processedPayouts.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
 
@@ -210,6 +810,7 @@ const ReportPayout = () => {
     });
   }, [allPayouts, filters]);
 
+
   // Stats Calculations
   const stats = useMemo(() => {
     const total = filteredPayouts.reduce((sum, p) => sum + p.amount, 0);
@@ -236,15 +837,21 @@ const ReportPayout = () => {
 
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
-    const data = filteredPayouts.map(p => ({
-      'Payout ID': p.id,
-      'Order ID': p.orderId,
-      'Recipient': p.recipient,
-      'Type': p.entityType.charAt(0).toUpperCase() + p.entityType.slice(1),
-      'Amount': p.amount,
-      'Date': new Date(p.orderDate).toLocaleDateString('en-GB'),
-      'Status': p.status
-    }));
+    const data = filteredPayouts.map(p => {
+      const baseData = {
+        'Payout ID': p.id,
+        'Recipient': p.recipient,
+        'Type': p.entityType === 'thirdParty' ? 'Third Party' : p.entityType.charAt(0).toUpperCase() + p.entityType.slice(1),
+        'Amount': p.amount,
+        'Date': new Date(p.orderDate).toLocaleDateString('en-GB'),
+        'Status': p.status
+      };
+      // Only include Order ID if not driver or labour
+      if (p.entityType !== 'driver' && p.entityType !== 'labour') {
+        baseData['Order ID'] = p.orderId;
+      }
+      return baseData;
+    });
 
     const ws = XLSX.utils.json_to_sheet(data);
     XLSX.utils.book_append_sheet(wb, ws, "Payouts");
@@ -270,19 +877,23 @@ const ReportPayout = () => {
     if (filters.status !== 'all') filterText += ` | Status: ${filters.status.charAt(0).toUpperCase() + filters.status.slice(1)}`;
     doc.text(filterText, 105, 30, { align: 'center' });
 
-    // Table Data
-    const tableBody = filteredPayouts.map(p => [
-      p.orderId,
-      p.recipient,
-      p.entityType.charAt(0).toUpperCase() + p.entityType.slice(1),
-      `Rs. ${p.amount.toFixed(2)}`,
-      new Date(p.orderDate).toLocaleDateString('en-GB'),
-      p.status
-    ]);
+    // Table Data - always include Order ID
+    const tableBody = filteredPayouts.map(p => {
+      return [
+        p.orderId,
+        p.recipient,
+        p.entityType === 'thirdParty' ? 'Third Party' : p.entityType.charAt(0).toUpperCase() + p.entityType.slice(1),
+        `Rs. ${p.amount.toFixed(2)}`,
+        new Date(p.orderDate).toLocaleDateString('en-GB'),
+        p.status
+      ];
+    });
+
+    const tableHeaders = [['Order ID', 'Recipient', 'Type', 'Amount', 'Date', 'Status']];
 
     doc.autoTable({
       startY: 50,
-      head: [['Order ID', 'Recipient', 'Type', 'Amount', 'Date', 'Status']],
+      head: tableHeaders,
       body: tableBody,
       theme: 'grid',
       headStyles: { fillColor: [13, 92, 77], textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -379,6 +990,8 @@ const ReportPayout = () => {
               <option value="farmer">Farmer</option>
               <option value="supplier">Supplier</option>
               <option value="thirdParty">Third Party</option>
+              <option value="driver">Driver</option>
+              <option value="labour">Labour</option>
             </select>
           </div>
           <div className="flex-1 w-full">
@@ -444,8 +1057,11 @@ const ReportPayout = () => {
                       <span className={`px-3 py-1 rounded-full text-xs font-medium 
                                                 ${payout.entityType === 'farmer' ? 'bg-[#D1FAE5] text-[#065F46]' :
                           payout.entityType === 'supplier' ? 'bg-[#DBEAFE] text-[#1E40AF]' :
-                            'bg-[#FEF3C7] text-[#92400E]'}`}>
-                        {payout.entityType.charAt(0).toUpperCase() + payout.entityType.slice(1)}
+                          payout.entityType === 'thirdParty' ? 'bg-[#FEF3C7] text-[#92400E]' :
+                          payout.entityType === 'driver' ? 'bg-[#E0E7FF] text-[#3730A3]' :
+                          payout.entityType === 'labour' ? 'bg-[#FCE7F3] text-[#831843]' :
+                            'bg-gray-200 text-gray-700'}`}>
+                        {payout.entityType === 'thirdParty' ? 'Third Party' : payout.entityType.charAt(0).toUpperCase() + payout.entityType.slice(1)}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm font-bold text-[#0D5C4D]">₹{payout.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -461,7 +1077,7 @@ const ReportPayout = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-[#6B8782]">
+                  <td colSpan={6} className="px-6 py-12 text-center text-[#6B8782]">
                     No payouts found matching your filters.
                   </td>
                 </tr>

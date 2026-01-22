@@ -43,6 +43,14 @@ const StockManagement = () => {
     sell: false
   });
 
+  // Market price tab state
+  const [marketSearchTerm, setMarketSearchTerm] = useState('');
+  const [marketCurrentPage, setMarketCurrentPage] = useState(1);
+
+  // Inventory tab state
+  const [inventorySearchTerm, setInventorySearchTerm] = useState('');
+  const [inventoryCurrentPage, setInventoryCurrentPage] = useState(1);
+
   // Sell Stock Form State
   const [sellForm, setSellForm] = useState({
     stockItem: '',
@@ -469,6 +477,46 @@ const StockManagement = () => {
     }
   };
 
+  // Derived data for Market Price tab (search + pagination)
+  const marketItemsPerPage = 10;
+  const filteredMarketProducts = products.filter((product) =>
+    product.product_name?.toLowerCase().includes(marketSearchTerm.toLowerCase())
+  );
+  const totalMarketPages = Math.max(1, Math.ceil(filteredMarketProducts.length / marketItemsPerPage));
+  const effectiveMarketPage = Math.min(marketCurrentPage, totalMarketPages);
+  const marketStartIndex = (effectiveMarketPage - 1) * marketItemsPerPage;
+  const marketPaginatedProducts = filteredMarketProducts.slice(
+    marketStartIndex,
+    marketStartIndex + marketItemsPerPage
+  );
+
+  // Derived data for Inventory tab (search + pagination)
+  const inventoryItemsPerPage = 10;
+  const filteredInventoryData = inventoryData.filter(item => {
+    const term = inventorySearchTerm.toLowerCase();
+    if (!term) return true;
+    const invoice = (item.invoice_no || '').toString().toLowerCase();
+    const company = (item.company_name || '').toLowerCase();
+    const itemName = (item.item_name || '').toLowerCase();
+    const hsn = (item.hsn_code || '').toString().toLowerCase();
+    return (
+      invoice.includes(term) ||
+      company.includes(term) ||
+      itemName.includes(term) ||
+      hsn.includes(term)
+    );
+  });
+  const totalInventoryPages = Math.max(
+    1,
+    Math.ceil(filteredInventoryData.length / inventoryItemsPerPage)
+  );
+  const effectiveInventoryPage = Math.min(inventoryCurrentPage, totalInventoryPages);
+  const inventoryStartIndex = (effectiveInventoryPage - 1) * inventoryItemsPerPage;
+  const inventoryPaginatedData = filteredInventoryData.slice(
+    inventoryStartIndex,
+    inventoryStartIndex + inventoryItemsPerPage
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6 lg:p-8">
 
@@ -668,6 +716,23 @@ const StockManagement = () => {
       {/* Market Price Entry Tab - Show Products Table */}
       {activeTab === 'market' && (
         <div className="bg-white rounded-2xl overflow-hidden border border-[#D0E0DB]">
+          {/* Search bar for market price products */}
+          <div className="px-6 py-4 border-b border-[#D0E0DB]">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#6B8782]" size={18} />
+              <input
+                type="text"
+                placeholder="Search vegetables..."
+                value={marketSearchTerm}
+                onChange={(e) => {
+                  setMarketSearchTerm(e.target.value);
+                  setMarketCurrentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2.5 bg-[#F0F4F3] border border-transparent rounded-xl text-[#0D5C4D] placeholder-[#6B8782] focus:outline-none focus:ring-2 focus:ring-[#0D8568]"
+              />
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -682,7 +747,7 @@ const StockManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {products.map((product, index) => (
+                {marketPaginatedProducts.map((product, index) => (
                   <tr key={product.pid} className={`border-b border-[#D0E0DB] hover:bg-[#F0F4F3] transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-[#F0F4F3]/30'}`}>
                     <td className="px-6 py-4">
                       {product.product_image ? (
@@ -759,19 +824,83 @@ const StockManagement = () => {
 
           <div className="flex items-center justify-between px-6 py-4 bg-[#F0F4F3] border-t border-[#D0E0DB]">
             <div className="text-sm text-[#6B8782]">
-              Showing {products.length} products
+              {filteredMarketProducts.length > 0 ? (
+                `Showing ${marketStartIndex + 1} to ${Math.min(
+                  marketStartIndex + marketItemsPerPage,
+                  filteredMarketProducts.length
+                )} of ${filteredMarketProducts.length} products`
+              ) : (
+                'No products found'
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              <button className="px-3 py-2 text-[#6B8782] hover:bg-[#D0E0DB] rounded-lg transition-colors">
-                &lt;
-              </button>
-              <button className="px-4 py-2 rounded-lg font-medium bg-[#0D8568] text-white">
-                1
-              </button>
-              <button className="px-3 py-2 text-[#6B8782] hover:bg-[#D0E0DB] rounded-lg transition-colors">
-                &gt;
-              </button>
-            </div>
+
+            {totalMarketPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setMarketCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={marketCurrentPage === 1}
+                  className="px-3 py-2 text-[#6B8782] hover:bg-[#D0E0DB] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  &lt;
+                </button>
+
+                {[...Array(totalMarketPages)].map((_, index) => {
+                  const pageNum = index + 1;
+                  if (totalMarketPages <= 7) {
+                    // Show all pages if 7 or fewer
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setMarketCurrentPage(pageNum)}
+                        className={`px-4 py-2 rounded-lg font-medium ${
+                          marketCurrentPage === pageNum
+                            ? 'bg-[#0D8568] text-white'
+                            : 'text-[#6B8782] hover:bg-[#D0E0DB]'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  } else {
+                    // Condensed pagination for many pages
+                    if (
+                      pageNum === 1 ||
+                      pageNum === totalMarketPages ||
+                      (pageNum >= marketCurrentPage - 1 && pageNum <= marketCurrentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setMarketCurrentPage(pageNum)}
+                          className={`px-4 py-2 rounded-lg font-medium ${
+                            marketCurrentPage === pageNum
+                              ? 'bg-[#0D8568] text-white'
+                              : 'text-[#6B8782] hover:bg-[#D0E0DB]'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    } else if (pageNum === marketCurrentPage - 2 || pageNum === marketCurrentPage + 2) {
+                      return (
+                        <span key={pageNum} className="px-2 py-2 text-[#6B8782]">
+                          ...
+                        </span>
+                      );
+                    }
+                  }
+                  return null;
+                })}
+
+                <button
+                  onClick={() => setMarketCurrentPage(prev => Math.min(prev + 1, totalMarketPages))}
+                  disabled={marketCurrentPage === totalMarketPages}
+                  className="px-3 py-2 text-[#6B8782] hover:bg-[#D0E0DB] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  &gt;
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1081,14 +1210,32 @@ const StockManagement = () => {
         <>
           {!showInventoryForm ? (
             <>
-              <div className="mb-6 flex justify-end">
-                <button
-                  onClick={() => setShowInventoryForm(true)}
-                  className="px-6 py-3 bg-[#0D8568] text-white rounded-xl font-semibold hover:bg-[#0D7C66] transition-colors flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Inventory Stock
-                </button>
+              <div className="mb-6 flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
+                {/* Inventory search */}
+                <div className="relative max-w-md w-full">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#6B8782]" />
+                  <input
+                    type="text"
+                    placeholder="Search invoice, company, item, HSN..."
+                    value={inventorySearchTerm}
+                    onChange={(e) => {
+                      setInventorySearchTerm(e.target.value);
+                      setInventoryCurrentPage(1);
+                    }}
+                    className="w-full pl-12 pr-4 py-3 bg-[#F0F4F3] border-none rounded-xl text-[#0D5C4D] placeholder-[#6B8782] focus:outline-none focus:ring-2 focus:ring-[#0D8568] text-sm"
+                  />
+                </div>
+
+                {/* Add Inventory button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowInventoryForm(true)}
+                    className="px-6 py-3 bg-[#0D8568] text-white rounded-xl font-semibold hover:bg-[#0D7C66] transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Inventory Stock
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl overflow-hidden border border-[#D0E0DB]">
@@ -1115,7 +1262,7 @@ const StockManagement = () => {
                           </td>
                         </tr>
                       ) : (
-                        inventoryData.map((item, index) => (
+                        inventoryPaginatedData.map((item, index) => (
                           <tr key={item.id} className={`border-b border-[#D0E0DB] hover:bg-[#F0F4F3] transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-[#F0F4F3]/30'}`}>
                             <td className="px-6 py-4 text-sm font-medium text-[#0D5C4D]">{item.invoice_no}</td>
                             <td className="px-6 py-4 text-sm text-[#0D5C4D]">{item.company_name}</td>
@@ -1150,8 +1297,86 @@ const StockManagement = () => {
 
                 <div className="flex items-center justify-between px-6 py-4 bg-[#F0F4F3] border-t border-[#D0E0DB]">
                   <div className="text-sm text-[#6B8782]">
-                    Showing {inventoryData.length} records
+                    {filteredInventoryData.length > 0 ? (
+                      `Showing ${inventoryStartIndex + 1} to ${Math.min(
+                        inventoryStartIndex + inventoryItemsPerPage,
+                        filteredInventoryData.length
+                      )} of ${filteredInventoryData.length} records`
+                    ) : (
+                      'No inventory records found'
+                    )}
                   </div>
+
+                  {totalInventoryPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setInventoryCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={inventoryCurrentPage === 1}
+                        className="px-3 py-2 text-[#6B8782] hover:bg-[#D0E0DB] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        &lt;
+                      </button>
+
+                      {[...Array(totalInventoryPages)].map((_, index) => {
+                        const pageNum = index + 1;
+                        if (totalInventoryPages <= 7) {
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => setInventoryCurrentPage(pageNum)}
+                              className={`px-4 py-2 rounded-lg font-medium ${
+                                inventoryCurrentPage === pageNum
+                                  ? 'bg-[#0D8568] text-white'
+                                  : 'text-[#6B8782] hover:bg-[#D0E0DB]'
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        } else {
+                          if (
+                            pageNum === 1 ||
+                            pageNum === totalInventoryPages ||
+                            (pageNum >= inventoryCurrentPage - 1 && pageNum <= inventoryCurrentPage + 1)
+                          ) {
+                            return (
+                              <button
+                                key={pageNum}
+                                onClick={() => setInventoryCurrentPage(pageNum)}
+                                className={`px-4 py-2 rounded-lg font-medium ${
+                                  inventoryCurrentPage === pageNum
+                                    ? 'bg-[#0D8568] text-white'
+                                    : 'text-[#6B8782] hover:bg-[#D0E0DB]'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          } else if (
+                            pageNum === inventoryCurrentPage - 2 ||
+                            pageNum === inventoryCurrentPage + 2
+                          ) {
+                            return (
+                              <span key={pageNum} className="px-2 py-2 text-[#6B8782]">
+                                ...
+                              </span>
+                            );
+                          }
+                        }
+                        return null;
+                      })}
+
+                      <button
+                        onClick={() =>
+                          setInventoryCurrentPage(prev => Math.min(prev + 1, totalInventoryPages))
+                        }
+                        disabled={inventoryCurrentPage === totalInventoryPages}
+                        className="px-3 py-2 text-[#6B8782] hover:bg-[#D0E0DB] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        &gt;
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </>

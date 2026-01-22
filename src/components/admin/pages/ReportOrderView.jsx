@@ -7,6 +7,7 @@ import { getAllDrivers } from '../../../api/driverApi';
 import { getAllInventory } from '../../../api/inventoryApi';
 import { getAllLabourRates } from '../../../api/labourRateApi';
 import { getAllDriverRates } from '../../../api/driverRateApi';
+import { getAllFuelExpenses } from '../../../api/fuelExpenseApi';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx-js-style';
@@ -20,6 +21,7 @@ const ReportOrderView = () => {
     const [stockItems, setStockItems] = useState([]);
     const [labourRates, setLabourRates] = useState([]);
     const [driverRates, setDriverRates] = useState([]);
+    const [fuelExpenses, setFuelExpenses] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -228,7 +230,7 @@ const ReportOrderView = () => {
         });
 
         return productsByDriver;
-    }, [assignment, drivers, assignment?.stage2_data, assignment?.stage2_summary_data, assignment?.stage3_data, assignment?.stage4_data]);
+    }, [assignment, drivers, assignment?.stage2_data, assignment?.stage2_summary_data, assignment?.stage3_data, assignment?.stage4_data, fuelExpenses, order]);
 
     const handleExportPDF = () => {
         if (!processedReportData || !order || !assignment) return;
@@ -736,12 +738,13 @@ const ReportOrderView = () => {
         try {
             setLoading(true);
 
-            // Fetch drivers, inventory, labour rates, and driver rates concurrently
-            const [driversResponse, stockResponse, ratesResponse, driverRatesResponse] = await Promise.all([
+            // Fetch drivers, inventory, labour rates, driver rates, and fuel expenses concurrently
+            const [driversResponse, stockResponse, ratesResponse, driverRatesResponse, fuelExpensesResponse] = await Promise.all([
                 getAllDrivers(),
                 getAllInventory(1, 1000),
                 getAllLabourRates(),
-                getAllDriverRates()
+                getAllDriverRates(),
+                getAllFuelExpenses()
             ]);
 
             if (driversResponse.success && driversResponse.data) {
@@ -772,6 +775,16 @@ const ReportOrderView = () => {
                     setDriverRates(driverRatesResponse);
                 } else if (driverRatesResponse.success && driverRatesResponse.data) {
                     setDriverRates(driverRatesResponse.data);
+                }
+            }
+
+            if (fuelExpensesResponse) {
+                if (Array.isArray(fuelExpensesResponse)) {
+                    setFuelExpenses(fuelExpensesResponse);
+                } else if (fuelExpensesResponse.success && fuelExpensesResponse.data) {
+                    setFuelExpenses(fuelExpensesResponse.data);
+                } else if (Array.isArray(fuelExpensesResponse.data)) {
+                    setFuelExpenses(fuelExpensesResponse.data);
                 }
             }
 
@@ -873,9 +886,6 @@ const ReportOrderView = () => {
                         >
                             <ArrowLeft className="text-[#0D8568]" size={24} />
                         </button>
-                        <div className="bg-[#E8F5F1] p-3 rounded-xl">
-                            <span className="text-2xl">📦</span>
-                        </div>
                         <div>
                             <h1 className="text-2xl font-bold text-[#0D5C4D]">Order Details</h1>
                             <p className="text-[#6B8782]">View detailed information about this order</p>
@@ -936,14 +946,14 @@ const ReportOrderView = () => {
                                         <table className="w-full">
                                             <thead className="bg-[#0D8568] text-white">
                                                 <tr>
-                                                    <th className="px-4 py-3 text-left">Product</th>
-                                                    <th className="px-4 py-3 text-left">Entity Type</th>
-                                                    <th className="px-4 py-3 text-left">Entity Name</th>
-                                                    <th className="px-4 py-3 text-left">Assigned Qty (kg)</th>
-                                                    <th className="px-4 py-3 text-left">Assigned Boxes</th>
-                                                    <th className="px-4 py-3 text-left">Labour</th>
-                                                    <th className="px-4 py-3 text-left">Driver</th>
-                                                    <th className="px-4 py-3 text-left">Place</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Product</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Entity Type</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Entity Name</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Assigned Qty (kg)</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Assigned Boxes</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Labour</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Driver</th>
+                                                    <th className="px-4 py-3 text-left whitespace-nowrap">Place</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1102,10 +1112,9 @@ const ReportOrderView = () => {
                                                     <h3 className="text-lg font-bold text-[#0D5C4D] mb-2">Assignment Summary</h3>
                                                     <p className="text-sm text-[#6B8782] mb-4 italic">Product collections grouped by driver</p>
 
-                                                    {Object.entries(driverProductMap).map(([driverName, products], driverIdx) => (
+                                                    {Object.entries(driverProductMap).map(([, products], driverIdx) => (
                                                         <div key={driverIdx} className="mb-6">
-                                                            <div className="bg-[#10B981] text-white px-4 py-2 rounded-t-lg">
-                                                                <h4 className="font-bold">{driverName} - DRV-{order.oid}-{(driverIdx + 1).toString().padStart(4, '0')}</h4>
+                                                            <div className="bg-[#0D8568] text-white px-4 py-2 rounded-t-lg">
                                                                 <p className="text-sm">{products.length} Collections</p>
                                                             </div>
                                                             <table className="w-full border border-gray-200">
@@ -1383,6 +1392,30 @@ const ReportOrderView = () => {
                                         const dayName = orderDate.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
                                         const shortDate = orderDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }).replace(/ /g, '/'); // 1/Oct/24
                                         const fullDate = orderDate.toLocaleDateString('en-GB'); // 01/10/2024
+                                        
+                                        // Helper function to get fuel expense for a driver on a specific date
+                                        const getFuelExpenseForDriver = (driverId, date) => {
+                                            if (!driverId || !date || !fuelExpenses || fuelExpenses.length === 0) return 0;
+                                            
+                                            const expenseDate = new Date(date).toISOString().split('T')[0];
+                                            const matchingExpenses = fuelExpenses.filter(expense => {
+                                                const expenseDriverId = expense.driver_id || expense.did || expense.driver?.did || expense.driver?.driver_id;
+                                                const expenseDateStr = expense.date ? new Date(expense.date).toISOString().split('T')[0] : '';
+                                                return expenseDriverId == driverId && expenseDateStr === expenseDate;
+                                            });
+                                            
+                                            // Sum all fuel expenses for this driver on this date
+                                            return matchingExpenses.reduce((sum, expense) => {
+                                                // Calculate total from unit_price and litre if total_amount is not available
+                                                let total = parseFloat(expense.total_amount || expense.total || 0);
+                                                if (!total || isNaN(total)) {
+                                                    const unitPrice = parseFloat(expense.unit_price || 0);
+                                                    const litre = parseFloat(expense.litre || 0);
+                                                    total = unitPrice * litre;
+                                                }
+                                                return sum + (isNaN(total) ? 0 : total);
+                                            }, 0);
+                                        };
 
                                         return Object.entries(productsByDriver).map(([driverName, data], index) => {
                                             // 1. Calculations & Prep
@@ -1507,7 +1540,11 @@ const ReportOrderView = () => {
                                                 || driverRates.find(r => r.status === 'Active');
                                             const driverWage = driverRateObj ? parseFloat(driverRateObj.amount) : 0;
 
-                                            const totalOverhead = labourCost + pickupCost + tapeCost + driverWage;
+                                            // Get fuel expense for this driver on the order date
+                                            const driverId = data.driverInfo?.did || data.driverInfo?.driver_id || null;
+                                            const fuelExpense = driverId ? getFuelExpenseForDriver(driverId, order.order_received_date) : 0;
+
+                                            const totalOverhead = labourCost + pickupCost + tapeCost + driverWage + fuelExpense;
 
                                             // Totals
                                             const totalExpenses = totalBoxCost + totalOverhead;
@@ -1631,6 +1668,12 @@ const ReportOrderView = () => {
                                                                     <td className="p-1 pl-4" colSpan="3">TAPE & PAPER</td>
                                                                     <td className="p-1 text-right pr-2">{tapeCost}</td>
                                                                 </tr>
+                                                                {fuelExpense > 0 && (
+                                                                    <tr className="border-b border-gray-200">
+                                                                        <td className="p-1 pl-4" colSpan="3">FUEL EXPENSE</td>
+                                                                        <td className="p-1 text-right pr-2">{fuelExpense.toFixed(2)}</td>
+                                                                    </tr>
+                                                                )}
 
                                                                 {/* Grand Totals */}
                                                                 <tr className="font-bold bg-gray-100">

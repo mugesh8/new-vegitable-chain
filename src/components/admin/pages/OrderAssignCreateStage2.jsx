@@ -27,6 +27,7 @@ const OrderAssignCreateStage2 = () => {
   const [labourExcessPay, setLabourExcessPay] = useState({});
   const [labourTotalAmounts, setLabourTotalAmounts] = useState({});
   const [labourRates, setLabourRates] = useState({});
+  const [stage2Status, setStage2Status] = useState(null); // Store stage2_status from assignment data
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -89,6 +90,11 @@ const OrderAssignCreateStage2 = () => {
         // Load assignment data from Stage 1
         const assignmentResponse = await getOrderAssignment(id);
         const assignmentData = assignmentResponse.data;
+
+        // Store stage2_status from assignment data
+        if (assignmentData.stage2_status) {
+          setStage2Status(assignmentData.stage2_status);
+        }
 
         // Fetch order data separately if not included
         let orderItems = [];
@@ -595,12 +601,14 @@ const OrderAssignCreateStage2 = () => {
                 <td className="px-4 py-3 text-sm text-left text-gray-900">{orderData?.customer_name || 'N/A'}</td>
                 <td className="px-4 py-3 text-sm text-left text-gray-900">{orderData?.items?.length || 0} Items</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${orderData?.order_status === 'pending' ? 'bg-purple-100 text-purple-700' :
-                    orderData?.order_status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
-                      orderData?.order_status === 'delivered' ? 'bg-emerald-600 text-white' :
-                        'bg-gray-100 text-gray-700'
-                    }`}>
-                    {orderData?.order_status ? orderData.order_status.charAt(0).toUpperCase() + orderData.order_status.slice(1) : 'N/A'}
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                    stage2Status === 'pending' ? 'bg-purple-100 text-purple-700' :
+                    stage2Status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
+                    stage2Status === 'completed' ? 'bg-emerald-600 text-white' :
+                    stage2Status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {stage2Status ? stage2Status.charAt(0).toUpperCase() + stage2Status.slice(1).replace('_', ' ') : (orderData?.order_status ? orderData.order_status.charAt(0).toUpperCase() + orderData.order_status.slice(1) : 'N/A')}
                   </span>
                 </td>
               </tr>

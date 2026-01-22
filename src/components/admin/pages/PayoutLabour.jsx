@@ -127,7 +127,7 @@ const LabourPayoutManagement = () => {
         const daysWorked = rate > 0 ? totalWage / rate : 0;
         const roundedDays = Math.round(daysWorked);
 
-        const excess = excessPayMap[labourId] || 0;
+        const excessPay = excessPayMap[labourId] || 0;
 
         return {
           id: labourId,
@@ -135,9 +135,9 @@ const LabourPayoutManagement = () => {
           labourCode: labour?.labour_id || `LID-${labourId}`,
           daysWorked: roundedDays,
           wageRate: rate,
-          advance: excess,
-          netAmount: totalWage,
-          status: 'Pending' // until an actual payout is recorded
+          excessPay: excessPay,
+          netAmount: totalWage + excessPay, // Net Amount = Excess Pay + Net Amount (totalWage)
+          status: 'Unpaid' // Default status is Unpaid
         };
       });
 
@@ -193,12 +193,25 @@ const LabourPayoutManagement = () => {
     { label: 'Total Active Labour', value: summaryStats.activeLabour.toString(), change: '' }
   ];
 
+  const handlePayClick = (payoutId) => {
+    setPayouts(prevPayouts => 
+      prevPayouts.map(payout => 
+        payout.id === payoutId 
+          ? { ...payout, status: 'Paid' }
+          : payout
+      )
+    );
+  };
+
   const getStatusColor = (status) => {
-    return status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-yellow-100 text-yellow-700';
+    if (status === 'Paid') {
+      return 'bg-emerald-100 text-emerald-700';
+    }
+    return 'bg-yellow-100 text-yellow-700';
   };
 
   const getActionButton = (status) => {
-    if (status === 'Pending') {
+    if (status === 'Unpaid') {
       return 'bg-emerald-600 hover:bg-emerald-700 text-white';
     }
     return 'bg-gray-200 hover:bg-gray-300 text-gray-700';
@@ -312,6 +325,9 @@ const LabourPayoutManagement = () => {
                     Wage Rate
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
+                    Excess Pay
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
                     Net Amount
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
@@ -325,13 +341,13 @@ const LabourPayoutManagement = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="7" className="px-6 py-8 text-center text-[#6B8782]">
                       Loading labour payouts...
                     </td>
                   </tr>
                 ) : paginatedPayouts.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="7" className="px-6 py-8 text-center text-[#6B8782]">
                       No labour payouts found
                     </td>
                   </tr>
@@ -358,12 +374,8 @@ const LabourPayoutManagement = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div
-                          className={`text-sm font-bold ${
-                            payout.advance === 0 ? 'text-[#0D5C4D]' : 'text-red-600'
-                          }`}
-                        >
-                          {payout.advance === 0 ? '₹0' : `- ${formatCurrency(payout.advance)}`}
+                        <div className="text-sm font-bold text-[#0D5C4D]">
+                          {formatCurrency(payout.excessPay)}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -382,6 +394,7 @@ const LabourPayoutManagement = () => {
                       </td>
                       <td className="px-6 py-4">
                         <button
+                          onClick={() => handlePayClick(payout.id)}
                           className={`px-6 py-2 rounded-lg text-xs font-semibold transition-colors ${getActionButton(
                             payout.status
                           )}`}

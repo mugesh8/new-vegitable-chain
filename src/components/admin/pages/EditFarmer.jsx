@@ -364,15 +364,15 @@ const EditFarmer = () => {
                 />
               </div>
 
-              {/* Dialing Person */}
+              {/* Dealing Person */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Dialing Person
+                  Dealing Person
                 </label>
                 <input
                   type="text"
                   name="dialingPerson"
-                  placeholder="Enter Dialing Person"
+                  placeholder="Enter Dealing Person"
                   value={formData.dialing_person}
                   onChange={handleInputChange}
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent text-sm"

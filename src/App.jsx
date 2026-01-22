@@ -37,6 +37,7 @@ import DriverDetails from './components/admin/pages/DriverDetails'
 import DriverAirportDelivery from './components/admin/pages/DriverAirportDelivery'
 import DriverLocalPickups from './components/admin/pages/DriverLocalPickups'
 import AddFuelExpenses from './components/admin/pages/AddFuelExpenses'
+import AddExcessKM from './components/admin/pages/AddExcessKM'
 import AddAdvancePay from './components/admin/pages/AddAdvancePay'
 import FuelExpenseManagement from './components/admin/pages/FuelExpenseManagement'
 import ViewFuelExpense from './components/admin/pages/ViewFuelExpense'
@@ -50,6 +51,8 @@ import ViewRemarks from './components/admin/pages/ViewRemarks'
 import EditRemarks from './components/admin/pages/EditRemarks'
 import DailyPayout from './components/admin/pages/DailyPayout'
 import PayoutManagement from './components/admin/pages/PayoutManagement'
+import PayoutSupplier from './components/admin/pages/PayoutSupplier'
+import PayoutThirdParty from './components/admin/pages/PayoutThirdParty'
 import PayoutLabour from './components/admin/pages/PayoutLabour'
 import PayoutDriver from './components/admin/pages/PayoutDriver'
 import RolesPermissionSystem from './components/admin/pages/RolesAndPermissionsManagements'
@@ -72,6 +75,8 @@ import ReportLabour from './components/admin/pages/ReportLabour'
 import ReportInvoice from './components/admin/pages/ReportInvoice'
 import ReportPayout from './components/admin/pages/ReportPayout'
 import ReportOrder from './components/admin/pages/ReportOrder'
+import ReportDriver from './components/admin/pages/ReportDriver'
+import ReportDriverView from './components/admin/pages/ReportDriverView'
 import ReportOrderView from './components/admin/pages/ReportOrderView'
 import ReportFarmerView from './components/admin/pages/ReportFarmerView'
 import ReportFarmerOrderView from './components/admin/pages/ReportFarmerOrderView'
@@ -144,6 +149,7 @@ const App = () => {
         <Route path="/drivers/:id/local-pickups" element={<ProtectedRoute><Layout><DriverLocalPickups /></Layout></ProtectedRoute>} />
         <Route path="/drivers/:id/airport" element={<ProtectedRoute><Layout><DriverAirportDelivery /></Layout></ProtectedRoute>} />
         <Route path="/drivers/:id/fuel-expenses" element={<ProtectedRoute><Layout><AddFuelExpenses /></Layout></ProtectedRoute>} />
+        <Route path="/drivers/:id/excess-km" element={<ProtectedRoute><Layout><AddExcessKM /></Layout></ProtectedRoute>} />
         <Route path="/drivers/:id/advance-pay" element={<ProtectedRoute><Layout><AddAdvancePay /></Layout></ProtectedRoute>} />
         <Route path="/fuel-expense-management" element={<ProtectedRoute><Layout><FuelExpenseManagement /></Layout></ProtectedRoute>} />
         <Route path="/fuel-expenses/view/:id" element={<ProtectedRoute><Layout><ViewFuelExpense /></Layout></ProtectedRoute>} />
@@ -184,16 +190,20 @@ const App = () => {
         <Route path="/stock" element={<ProtectedRoute><Layout><StockManagement /></Layout></ProtectedRoute>} />
         <Route path="/stock/:id" element={<ProtectedRoute><Layout><StockReassignmentForm /></Layout></ProtectedRoute>} />
         <Route path="/payouts" element={<ProtectedRoute><Layout><PayoutManagement /></Layout></ProtectedRoute>} />
+        <Route path="/payout-supplier" element={<ProtectedRoute><Layout><PayoutSupplier /></Layout></ProtectedRoute>} />
+        <Route path="/payout-thirdparty" element={<ProtectedRoute><Layout><PayoutThirdParty /></Layout></ProtectedRoute>} />
         <Route path="/payout-labour" element={<ProtectedRoute><Layout><PayoutLabour /></Layout></ProtectedRoute>} />
         <Route path="/payout-driver" element={<ProtectedRoute><Layout><PayoutDriver /></Layout></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Layout><ReportManagement /></Layout></ProtectedRoute>} />
         <Route path="/reports/farmer" element={<ProtectedRoute><Layout><ReportFarmer /></Layout></ProtectedRoute>} />
         <Route path="/reports/supplier" element={<ProtectedRoute><Layout><ReportSupplier /></Layout></ProtectedRoute>} />
         <Route path="/reports/third-party" element={<ProtectedRoute><Layout><ReportThirdParty /></Layout></ProtectedRoute>} />
-        <Route path="/reports/labour" element={<ProtectedRoute><Layout><ReportLabour /></Layout></ProtectedRoute>} />
-        <Route path="/reports/invoice" element={<ProtectedRoute><Layout><ReportInvoice /></Layout></ProtectedRoute>} />
-        <Route path="/reports/payout" element={<ProtectedRoute><Layout><ReportPayout /></Layout></ProtectedRoute>} />
-        <Route path="/reports/order" element={<ProtectedRoute><Layout><ReportOrder /></Layout></ProtectedRoute>} />
+               <Route path="/reports/labour" element={<ProtectedRoute><Layout><ReportLabour /></Layout></ProtectedRoute>} />
+               <Route path="/reports/invoice" element={<ProtectedRoute><Layout><ReportInvoice /></Layout></ProtectedRoute>} />
+               <Route path="/reports/payout" element={<ProtectedRoute><Layout><ReportPayout /></Layout></ProtectedRoute>} />
+               <Route path="/reports/order" element={<ProtectedRoute><Layout><ReportOrder /></Layout></ProtectedRoute>} />
+               <Route path="/reports/driver" element={<ProtectedRoute><Layout><ReportDriver /></Layout></ProtectedRoute>} />
+               <Route path="/reports/driver/:driverId" element={<ProtectedRoute><Layout><ReportDriverView /></Layout></ProtectedRoute>} />
         <Route path="/admin/report-order/:orderId" element={<ProtectedRoute><Layout><ReportOrderView /></Layout></ProtectedRoute>} />
         <Route path="/admin/report-farmer/:farmerId" element={<ProtectedRoute><Layout><ReportFarmerView /></Layout></ProtectedRoute>} />
         <Route path="/admin/report-farmer/:farmerId/order/:orderId" element={<ProtectedRoute><Layout><ReportFarmerOrderView /></Layout></ProtectedRoute>} />
