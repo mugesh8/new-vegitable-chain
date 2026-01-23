@@ -286,6 +286,17 @@ const ReportManagement = () => {
       type: 'financial'
     },
     {
+      title: 'Invoice cum Packing List Report',
+      description: 'Comprehensive invoice and packing details',
+      metric: `Total Invoices: ${loading ? '...' : stats.invoices}`,
+      link: 'View Report →',
+      icon: FileBarChart,
+      bgColor: 'bg-orange-50',
+      iconColor: 'text-orange-500',
+      path: '/reports/invoice-cum-packing-list',
+      type: 'financial'
+    },
+    {
       title: 'Driver Report',
       description: 'Driver details, KM records, and fuel expenses',
       metric: `Active Drivers: ${loading ? '...' : stats.drivers || 0}`,

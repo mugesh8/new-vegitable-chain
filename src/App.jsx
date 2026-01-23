@@ -73,6 +73,8 @@ import ReportSupplier from './components/admin/pages/ReportSupplier'
 import ReportThirdParty from './components/admin/pages/ReportThirdParty'
 import ReportLabour from './components/admin/pages/ReportLabour'
 import ReportInvoice from './components/admin/pages/ReportInvoice'
+import ReportInvoiceCumPackingList from './components/admin/pages/ReportInvoiceCumPackingList'
+import InvoiceCumPackingListDetail from './components/admin/pages/InvoiceCumPackingListDetail'
 import ReportPayout from './components/admin/pages/ReportPayout'
 import ReportOrder from './components/admin/pages/ReportOrder'
 import ReportDriver from './components/admin/pages/ReportDriver'
@@ -200,6 +202,8 @@ const App = () => {
         <Route path="/reports/third-party" element={<ProtectedRoute><Layout><ReportThirdParty /></Layout></ProtectedRoute>} />
                <Route path="/reports/labour" element={<ProtectedRoute><Layout><ReportLabour /></Layout></ProtectedRoute>} />
                <Route path="/reports/invoice" element={<ProtectedRoute><Layout><ReportInvoice /></Layout></ProtectedRoute>} />
+               <Route path="/reports/invoice-cum-packing-list" element={<ProtectedRoute><Layout><ReportInvoiceCumPackingList /></Layout></ProtectedRoute>} />
+               <Route path="/reports/invoice-cum-packing-list/:orderId" element={<ProtectedRoute><Layout><InvoiceCumPackingListDetail /></Layout></ProtectedRoute>} />
                <Route path="/reports/payout" element={<ProtectedRoute><Layout><ReportPayout /></Layout></ProtectedRoute>} />
                <Route path="/reports/order" element={<ProtectedRoute><Layout><ReportOrder /></Layout></ProtectedRoute>} />
                <Route path="/reports/driver" element={<ProtectedRoute><Layout><ReportDriver /></Layout></ProtectedRoute>} />

@@ -53,6 +53,7 @@ const NewOrder = () => {
   const [draftId, setDraftId] = useState(null);
   const [orderId, setOrderId] = useState(null);
   const [draggedIndex, setDraggedIndex] = useState(null);
+  const prevOrderTypeRef = useRef(formData.orderType);
 
   const toggleMoreDetails = (id) => {
     setProducts(prev =>
@@ -251,15 +252,26 @@ const NewOrder = () => {
         const customersResponse = await getCustomersByCategory(category);
         const customers = customersResponse.data || [];
         // Sort customers by customer_id in ascending order (oldest first)
-        const sortedCustomers = customers.sort((a, b) => (a.customer_id || 0) - (b.customer_id || 0));
+        let sortedCustomers = customers.sort((a, b) => (a.customer_id || 0) - (b.customer_id || 0));
+
+        // When editing an order/draft, ensure the current customer exists in the dropdown
+        if ((orderId || draftId) && (formData.customerId || formData.customerName)) {
+          const exists = sortedCustomers.some(
+            c => (c.customer_id || c.cust_id)?.toString() === formData.customerId?.toString()
+          );
+
+          if (!exists) {
+            sortedCustomers = [
+              ...sortedCustomers,
+              {
+                customer_id: formData.customerId,
+                customer_name: formData.customerName,
+              },
+            ];
+          }
+        }
+
         setAllCustomers(sortedCustomers);
-        
-        // Reset customer selection when order type changes
-        setFormData(prev => ({
-          ...prev,
-          customerName: '',
-          customerId: ''
-        }));
       } catch (error) {
         console.error('Error fetching customers by category:', error);
         setAllCustomers([]);
@@ -267,7 +279,21 @@ const NewOrder = () => {
     };
 
     fetchCustomersByCategory();
-  }, [formData.orderType]);
+  }, [formData.orderType, orderId, draftId]);
+
+  // Reset customer selection when order type changes (only in create mode)
+  useEffect(() => {
+    // Only reset if orderType actually changed (not on initial mount)
+    if (prevOrderTypeRef.current !== formData.orderType && !orderId && !draftId) {
+      setFormData(prev => ({
+        ...prev,
+        customerName: '',
+        customerId: ''
+      }));
+    }
+    // Update the ref for next comparison
+    prevOrderTypeRef.current = formData.orderType;
+  }, [formData.orderType, orderId, draftId]);
 
   // Update allowedPackingTypes for existing products when allProducts is loaded
   useEffect(() => {
