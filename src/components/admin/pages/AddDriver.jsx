@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, Eye, EyeOff, ChevronRight, ArrowLeft } from 'lucide-react';
 import { createDriver } from '../../../api/driverApi';
+import { createNotification } from '../../../api/notificationApi';
 
 const AddDriver = () => {
   const navigate = useNavigate();
@@ -142,6 +143,18 @@ const AddDriver = () => {
       if (kaPermitDoc) formDataToSend.append('ka_permit_doc', kaPermitDoc);
       
       await createDriver(formDataToSend);
+
+      try {
+        await createNotification({
+          title: 'New driver added',
+          message: `Driver ${formData.driverName} has been registered.`,
+          type: 'success',
+          category: 'Drivers'
+        });
+      } catch (notifyErr) {
+        console.error('Failed to create driver notification:', notifyErr);
+      }
+
       navigate('/drivers');
     } catch (error) {
       console.error('Error creating driver:', error);

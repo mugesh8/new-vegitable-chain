@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import { createVendor } from '../../../api/vendorApi';
 import { getAllProducts } from '../../../api/productApi';
+import { createNotification } from '../../../api/notificationApi';
 
 const AddVendorForm = () => {
   const navigate = useNavigate();
@@ -204,7 +205,16 @@ const AddVendorForm = () => {
       const response = await createVendor(vendorData, profileImage);
       
       if (response.success) {
-        // console.log('Vendor created successfully:', response.data);
+        try {
+          await createNotification({
+            title: 'New vendor added',
+            message: `Vendor ${vendorData.vendor_name} has been registered as ${vendorData.vendor_type}.`,
+            type: 'success',
+            category: 'Vendors'
+          });
+        } catch (notifyErr) {
+          console.error('Failed to create vendor notification:', notifyErr);
+        }
         navigate('/vendors');
       } else {
         setError(response.message || 'Failed to create vendor');

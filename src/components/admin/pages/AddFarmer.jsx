@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import { createFarmer } from '../../../api/farmerApi';
 import { getAllProducts } from '../../../api/productApi';
+import { createNotification } from '../../../api/notificationApi';
 
 const AddFarmer = () => {
   const navigate = useNavigate();
@@ -144,9 +145,19 @@ const AddFarmer = () => {
       }
 
       const response = await createFarmer(formDataToSend);
-      // console.log('Farmer created successfully:', response);
       setSuccess(true);
-      
+
+      try {
+        await createNotification({
+          title: 'New farmer added',
+          message: `Farmer ${formData.farmer_name || formData.farmerName} has been registered.`,
+          type: 'success',
+          category: 'Farmers'
+        });
+      } catch (notifyErr) {
+        console.error('Failed to create farmer notification:', notifyErr);
+      }
+
       setTimeout(() => {
         navigate('/farmers');
       }, 1500);

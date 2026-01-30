@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import { createThirdParty } from '../../../api/thirdPartyApi';
 import { getAllProducts } from '../../../api/productApi'; // Import product API
+import { createNotification } from '../../../api/notificationApi';
 
 const AddThirdParty = () => {
   const navigate = useNavigate();
@@ -117,9 +118,18 @@ const AddThirdParty = () => {
       
       // Call the API with JSON data (matching AddFarmer.jsx approach)
       const response = await createThirdParty(submitData);
-      // console.log('API Response:', response);
-      
-      // Navigate back to third party list on success
+
+      try {
+        await createNotification({
+          title: 'New third party added',
+          message: `Third party ${submitData.third_party_name} has been registered.`,
+          type: 'success',
+          category: 'Third Party'
+        });
+      } catch (notifyErr) {
+        console.error('Failed to create third party notification:', notifyErr);
+      }
+
       navigate('/third-party');
     } catch (err) {
       console.error('Error creating third party:', err);

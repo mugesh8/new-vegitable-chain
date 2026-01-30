@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Check, ChevronDown, Truck, Package, MapPin, Plus, X } from 'lucide-react';
 import { getPresentDriversToday } from '../../../api/driverApi';
@@ -18,6 +18,98 @@ const OrderAssignCreateStage3 = () => {
   const [tapes, setTapes] = useState([]);
   const [airportTapeData, setAirportTapeData] = useState({});
   const [stage3Status, setStage3Status] = useState(null); // Store stage3_status from assignment data
+  // Initial edit flag can come from navigation state (when user clicks "Edit Assign")
+  // and will also be forced to true when existing stage3_data is detected.
+  const [isEdit, setIsEdit] = useState(!!location.state?.isEdit); // Flag to indicate edit mode
+  const [stage2BoxStatus, setStage2BoxStatus] = useState({}); // { oiid: { available: number, pending: number } }
+  const [noOfPkgsWarning, setNoOfPkgsWarning] = useState({}); // { rowId: 'warning message' } when No of Pkgs > Avl Box
+
+  // Refs for keyboard navigation in main table (No of Pkgs, Airport, Driver)
+  const inputGridRefs = useRef({});
+
+  // airportTapeData: { [airportName]: [ { tapeName, tapeQuantity, tapeColor }, ... ] } — multiple tapes per airport
+  const getTapesForAirport = (airport) => {
+    const val = airportTapeData[airport];
+    if (Array.isArray(val) && val.length > 0) return val;
+    if (val && typeof val === 'object' && !Array.isArray(val)) return [{ tapeName: val.tapeName || '', tapeQuantity: val.tapeQuantity != null ? val.tapeQuantity : '', tapeColor: val.tapeColor || '' }];
+    return [{ tapeName: '', tapeQuantity: '', tapeColor: '' }];
+  };
+  const addTapeForAirport = (airport) => {
+    setAirportTapeData(prev => ({
+      ...prev,
+      [airport]: [...getTapesForAirport(airport), { tapeName: '', tapeQuantity: '', tapeColor: '' }]
+    }));
+  };
+  const updateTapeForAirport = (airport, tapeIndex, fieldOrPatch, value) => {
+    setAirportTapeData(prev => {
+      const raw = prev[airport];
+      const list = Array.isArray(raw) && raw.length > 0 ? raw : (raw && typeof raw === 'object' ? [{ tapeName: raw.tapeName || '', tapeQuantity: raw.tapeQuantity != null ? raw.tapeQuantity : '', tapeColor: raw.tapeColor || '' }] : [{ tapeName: '', tapeQuantity: '', tapeColor: '' }]);
+      const next = [...list];
+      if (!next[tapeIndex]) return prev;
+      if (typeof fieldOrPatch === 'object') {
+        next[tapeIndex] = { ...next[tapeIndex], ...fieldOrPatch };
+      } else {
+        next[tapeIndex] = { ...next[tapeIndex], [fieldOrPatch]: value };
+      }
+      return { ...prev, [airport]: next };
+    });
+  };
+  const removeTapeForAirport = (airport, tapeIndex) => {
+    setAirportTapeData(prev => {
+      const raw = prev[airport];
+      const list = Array.isArray(raw) && raw.length > 0 ? raw : (raw && typeof raw === 'object' ? [{ tapeName: raw.tapeName || '', tapeQuantity: raw.tapeQuantity != null ? raw.tapeQuantity : '', tapeColor: raw.tapeColor || '' }] : [{ tapeName: '', tapeQuantity: '', tapeColor: '' }]);
+      if (list.length <= 1) return prev;
+      return { ...prev, [airport]: list.filter((_, i) => i !== tapeIndex) };
+    });
+  };
+
+  // Handle arrow key navigation between inputs
+  const handleKeyDown = (e, rowIndex, colIndex, totalRows) => {
+    const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!arrowKeys.includes(e.key)) return;
+
+    e.preventDefault();
+
+    // Column mapping: 0 = No of Pkgs, 1 = Airport Name, 2 = Select Driver
+    const columnCount = 3;
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+
+    switch (e.key) {
+      case 'ArrowRight':
+        nextCol = colIndex + 1;
+        if (nextCol >= columnCount) {
+          nextCol = 0;
+          nextRow = Math.min(nextRow + 1, totalRows - 1);
+        }
+        break;
+      case 'ArrowLeft':
+        nextCol = colIndex - 1;
+        if (nextCol < 0) {
+          nextCol = columnCount - 1;
+          nextRow = Math.max(nextRow - 1, 0);
+        }
+        break;
+      case 'ArrowDown':
+        nextRow = Math.min(nextRow + 1, totalRows - 1);
+        break;
+      case 'ArrowUp':
+        nextRow = Math.max(nextRow - 1, 0);
+        break;
+      default:
+        break;
+    }
+
+    const nextKey = `${nextRow}-${nextCol}`;
+    const nextInput = inputGridRefs.current[nextKey];
+
+    if (nextInput) {
+      nextInput.focus();
+      if (nextInput.tagName === 'INPUT' && nextInput.select) {
+        setTimeout(() => nextInput.select(), 0);
+      }
+    }
+  };
 
   // Helper function to parse num_boxes
   const parseNumBoxes = (numBoxesStr) => {
@@ -48,6 +140,7 @@ const OrderAssignCreateStage3 = () => {
 
         // Load assignment data to get stage2 and stage3 assignments
         let stage2LabourMap = {};
+        let stage2BoxStatusMap = {}; // Track packed (available) boxes from Stage 2
         let stage3Products = [];
         try {
           const { getOrderAssignment } = await import('../../../api/orderAssignmentApi');
@@ -139,6 +232,24 @@ const OrderAssignCreateStage3 = () => {
                       stage2LabourMap[productId].push(labourName);
                     }
                   }
+
+                  // Build box status map based on packedBoxes and status
+                  // Build box status map based on packedBoxes.
+                  // We only care about how many boxes are already packed
+                  // (completed). Pending count will be derived later as:
+                  // totalBoxes - availableBoxes.
+                  if (productId) {
+                    const packedBoxes = parseInt(assignment.packedBoxes) || 0;
+                    const status = (assignment.status || '').toLowerCase();
+
+                    if (!stage2BoxStatusMap[productId]) {
+                      stage2BoxStatusMap[productId] = { available: 0 };
+                    }
+
+                    if (status === 'completed') {
+                      stage2BoxStatusMap[productId].available += packedBoxes;
+                    }
+                  }
                 });
               });
 
@@ -199,18 +310,44 @@ const OrderAssignCreateStage3 = () => {
           });
 
           console.log('Final Labour Map:', stage2LabourMap);
+          console.log('Stage 2 Box Status Map:', stage2BoxStatusMap);
 
           // Parse stage3_data to get saved stage3 data
           if (assignmentData.stage3_data) {
+            // If we already have stage3 data saved for this order,
+            // switch the screen into "edit" mode so that backend
+            // can treat subsequent saves as updates instead of
+            // re‑deducting tape quantities or stock.
+            setIsEdit(true);
             try {
               const stage3Data = typeof assignmentData.stage3_data === 'string'
                 ? JSON.parse(assignmentData.stage3_data)
                 : assignmentData.stage3_data;
               stage3Products = stage3Data.products || [];
 
-              // Load airport tape data
-              if (stage3Data.airportTapeData) {
-                setAirportTapeData(stage3Data.airportTapeData);
+              // Load airport tape data: prefer from airportGroups (tapes array or single tape), then airportTapeData
+              const tapeFromGroups = {};
+              const ag = stage3Data.summaryData?.airportGroups || stage3Data.airportGroups || {};
+              Object.values(ag).forEach((g) => {
+                if (!g || !g.airportName) return;
+                if (Array.isArray(g.tapes) && g.tapes.length > 0) {
+                  tapeFromGroups[g.airportName] = g.tapes.map(t => ({
+                    tapeName: t.tapeName || '',
+                    tapeQuantity: t.tapeQuantity != null ? t.tapeQuantity : '',
+                    tapeColor: t.tapeColor || ''
+                  }));
+                } else if (g.tapeName != null || g.tapeQuantity != null || g.tapeColor != null) {
+                  tapeFromGroups[g.airportName] = [{ tapeName: g.tapeName || '', tapeQuantity: g.tapeQuantity != null ? g.tapeQuantity : '', tapeColor: g.tapeColor || '' }];
+                }
+              });
+              if (Object.keys(tapeFromGroups).length > 0) {
+                setAirportTapeData(tapeFromGroups);
+              } else if (stage3Data.airportTapeData) {
+                const normalized = {};
+                Object.entries(stage3Data.airportTapeData).forEach(([apt, val]) => {
+                  normalized[apt] = Array.isArray(val) ? val : [{ tapeName: val.tapeName || '', tapeQuantity: val.tapeQuantity != null ? val.tapeQuantity : '', tapeColor: val.tapeColor || '' }];
+                });
+                setAirportTapeData(normalized);
               }
             } catch (e) {
               console.error('Error parsing stage3_data:', e);
@@ -220,30 +357,50 @@ const OrderAssignCreateStage3 = () => {
           console.error('Error loading assignments:', error);
         }
 
+        // Build quick lookup for order items by oiid
+        const orderItemsByOiid = {};
+        if (orderData?.items) {
+          orderData.items.forEach(item => {
+            if (item.oiid != null) {
+              orderItemsByOiid[item.oiid] = item;
+            }
+          });
+        }
+
         // Initialize product rows from order data
         if (orderData?.items) {
           let rows = [];
 
           // If stage3 data exists, use it
           if (stage3Products && stage3Products.length > 0) {
-            rows = stage3Products.map((s3Product) => ({
-              id: s3Product.id || `${s3Product.oiid}-${s3Product.assignmentIndex || 0}`,
-              oiid: s3Product.oiid,
-              product: s3Product.product,
-              grossWeight: s3Product.grossWeight,
-              totalBoxes: s3Product.totalBoxes,
-              labour: s3Product.labour || '-',
-              ct: s3Product.ct || '',
-              noOfPkgs: s3Product.noOfPkgs || '',
-              selectedDriver: s3Product.selectedDriver || '',
-              airportName: s3Product.airportName || '',
-              airportLocation: s3Product.airportLocation || '',
-              vehicleNumber: s3Product.vehicleNumber || '',
-              phoneNumber: s3Product.phoneNumber || '',
-              vehicleCapacity: s3Product.vehicleCapacity || '',
-              status: s3Product.status || 'pending',
-              assignmentIndex: s3Product.assignmentIndex || 0
-            }));
+            rows = stage3Products.map((s3Product) => {
+              const orderItem = orderItemsByOiid[s3Product.oiid] || {};
+              const totalBoxes = s3Product.totalBoxes || parseNumBoxes(orderItem.num_boxes);
+              const boxStatus = stage2BoxStatusMap[s3Product.oiid] || { available: 0 };
+              const availableBoxes = boxStatus.available || 0;
+              const pendingBoxes = Math.max(totalBoxes - availableBoxes, 0);
+
+              return {
+                id: s3Product.id || `${s3Product.oiid}-${s3Product.assignmentIndex || 0}`,
+                oiid: s3Product.oiid,
+                product: s3Product.product,
+                grossWeight: s3Product.grossWeight,
+                totalBoxes: totalBoxes,
+                availableBoxes: availableBoxes,
+                pendingBoxes: pendingBoxes,
+                labour: s3Product.labour || '-',
+                ct: s3Product.ct || '',
+                noOfPkgs: s3Product.noOfPkgs || '',
+                selectedDriver: s3Product.selectedDriver || '',
+                airportName: s3Product.airportName || '',
+                airportLocation: s3Product.airportLocation || '',
+                vehicleNumber: s3Product.vehicleNumber || '',
+                phoneNumber: s3Product.phoneNumber || '',
+                vehicleCapacity: s3Product.vehicleCapacity || '',
+                status: s3Product.status || 'pending',
+                assignmentIndex: s3Product.assignmentIndex || 0
+              };
+            });
           } else {
             // Initialize from order data if no stage3 data exists
             rows = orderData.items.map((item) => {
@@ -252,6 +409,9 @@ const OrderAssignCreateStage3 = () => {
               const netWeight = parseFloat(item.net_weight) || 0;
               const boxWeight = totalBoxes * 0.5;
               const grossWeight = netWeight + boxWeight;
+              const boxStatus = stage2BoxStatusMap[item.oiid] || { available: 0 };
+              const availableBoxes = boxStatus.available || 0;
+              const pendingBoxes = Math.max(totalBoxes - availableBoxes, 0);
 
               //console.log(`Product ${item.oiid}: Labour = ${labourNames}`);
 
@@ -261,6 +421,8 @@ const OrderAssignCreateStage3 = () => {
                 product: (item.product_name || item.product || '').replace(/^\d+\s*-\s*/, ''),
                 grossWeight: `${grossWeight.toFixed(2)} kg`,
                 totalBoxes: totalBoxes,
+                availableBoxes: availableBoxes,
+                pendingBoxes: pendingBoxes,
                 labour: labourNames,
                 ct: '',
                 noOfPkgs: '',
@@ -277,6 +439,7 @@ const OrderAssignCreateStage3 = () => {
           }
           //console.log('Final product rows:', rows);
           setProductRows(rows);
+          setStage2BoxStatus(stage2BoxStatusMap);
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -377,13 +540,37 @@ const OrderAssignCreateStage3 = () => {
   const handleNoOfPkgsChange = (index, value) => {
     const updatedRows = [...productRows];
     updatedRows[index].noOfPkgs = value;
+    const currentRow = updatedRows[index];
+    const avlBox = currentRow.availableBoxes ?? 0;
+
+    // Warn if value exceeds available boxes, or when there are no avl boxes (only pen box)
+    if (value && !isNaN(parseInt(value))) {
+      const numPkgs = parseInt(value);
+      const overAvl = numPkgs > 0 && numPkgs > avlBox; // includes avlBox === 0 (only pending)
+      if (overAvl) {
+        const msg = avlBox === 0
+          ? 'Not available for packing. Avl box: 0 (only pending boxes).'
+          : `${numPkgs} is not available for packing. Avl box: ${avlBox}`;
+        setNoOfPkgsWarning((prev) => ({ ...prev, [currentRow.id]: msg }));
+      } else {
+        setNoOfPkgsWarning((prev) => {
+          const next = { ...prev };
+          delete next[currentRow.id];
+          return next;
+        });
+      }
+    } else {
+      setNoOfPkgsWarning((prev) => {
+        const next = { ...prev };
+        delete next[currentRow.id];
+        return next;
+      });
+    }
 
     // Auto-generate CT from No of Pkgs
     if (value && !isNaN(parseInt(value))) {
       const numPkgs = parseInt(value);
       if (numPkgs > 0) {
-        const currentRow = updatedRows[index];
-
         // Get next available position for this airport (continuous across all products)
         const startPosition = getNextCTPositionForAirport(
           currentRow.airportName,
@@ -408,32 +595,162 @@ const OrderAssignCreateStage3 = () => {
       updatedRows[index].ct = '';
     }
 
+    // Auto-add / cleanup assignment rows while typing, based on
+    // how many boxes are actually packed for this product.
+    const totalBoxes = currentRow.totalBoxes || 0;
+
+    if (totalBoxes > 0) {
+      // Work only with rows for this product
+      let sameProductRows = updatedRows.filter(r => r.oiid === currentRow.oiid);
+      const totalPackages = sameProductRows.reduce(
+        (sum, r) => sum + (parseInt(r.noOfPkgs) || 0),
+        0
+      );
+
+      // Helper to detect an "auto" empty row
+      const isCompletelyEmptyRow = (r) => {
+        const pkgCount = parseInt(r.noOfPkgs) || 0;
+        return (
+          pkgCount === 0 &&
+          !r.ct &&
+          !r.airportName &&
+          !r.selectedDriver &&
+          r.assignmentIndex > 0
+        );
+      };
+
+      const emptyRows = sameProductRows.filter(isCompletelyEmptyRow);
+
+      if (totalPackages >= totalBoxes || totalPackages === 0) {
+        // Product fully packed (or nothing entered): remove ALL trailing
+        // empty auto-created rows for this product.
+        const removedIds = [];
+        for (const r of emptyRows) {
+          const globalIndex = updatedRows.indexOf(r);
+          if (globalIndex !== -1) {
+            updatedRows.splice(globalIndex, 1);
+            removedIds.push(r.id);
+          }
+        }
+        if (removedIds.length > 0) {
+          setNoOfPkgsWarning((prev) => {
+            const next = { ...prev };
+            removedIds.forEach((id) => delete next[id]);
+            return next;
+          });
+        }
+      } else {
+        // Some boxes packed but not all: ensure exactly ONE empty row at end.
+        if (emptyRows.length === 0) {
+          const firstRow = sameProductRows[0];
+          const maxAssignmentIndex = Math.max(...sameProductRows.map(r => r.assignmentIndex));
+          const newRow = {
+            id: `${firstRow.oiid}-${maxAssignmentIndex + 1}`,
+            oiid: firstRow.oiid,
+            product: firstRow.product,
+            grossWeight: firstRow.grossWeight,
+            totalBoxes: firstRow.totalBoxes,
+            availableBoxes: firstRow.availableBoxes,
+            pendingBoxes: firstRow.pendingBoxes,
+            labour: firstRow.labour,
+            ct: '',
+            noOfPkgs: '',
+            selectedDriver: '',
+            airportName: '',
+            airportLocation: '',
+            vehicleNumber: '',
+            phoneNumber: '',
+            vehicleCapacity: '',
+            status: 'pending',
+            assignmentIndex: maxAssignmentIndex + 1
+          };
+
+          sameProductRows = updatedRows.filter(r => r.oiid === firstRow.oiid);
+          const lastRowIndex = updatedRows.lastIndexOf(sameProductRows[sameProductRows.length - 1]);
+          updatedRows.splice(lastRowIndex + 1, 0, newRow);
+        } else if (emptyRows.length > 1) {
+          // Keep only the last empty row, remove the others
+          const lastEmpty = emptyRows[emptyRows.length - 1];
+          for (const r of emptyRows) {
+            if (r === lastEmpty) continue;
+            const globalIndex = updatedRows.indexOf(r);
+            if (globalIndex !== -1) {
+              updatedRows.splice(globalIndex, 1);
+            }
+          }
+        }
+      }
+    }
+
     setProductRows(updatedRows);
   };
 
   const handleNoOfPkgsBlur = (index) => {
     const row = productRows[index];
     const value = row.noOfPkgs;
+    const totalBoxes = row.totalBoxes || 0;
+    const avlBox = row.availableBoxes ?? 0;
 
     // Validate when user leaves the field
     if (value && !isNaN(parseInt(value))) {
       const numPkgs = parseInt(value);
-      if (numPkgs > row.totalBoxes) {
-        alert(`Number of packages (${numPkgs}) cannot exceed total boxes (${row.totalBoxes})`);
-        // Clear invalid value
+      if (numPkgs > totalBoxes) {
+        alert(`Number of packages (${numPkgs}) cannot exceed total boxes (${totalBoxes})`);
         const updatedRows = [...productRows];
         updatedRows[index].noOfPkgs = '';
         updatedRows[index].ct = '';
         setProductRows(updatedRows);
+        setNoOfPkgsWarning((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+        return;
+      }
+      if (numPkgs > 0 && numPkgs > avlBox) {
+        const msg = avlBox === 0
+          ? `${numPkgs} packages is not available for packing. No boxes available (Avl box: 0, only pending boxes).`
+          : `${numPkgs} packages is not available for packing. Available boxes for this product: ${avlBox}`;
+        alert(msg);
       }
     }
   };
 
   const handleDriverChange = (index, driverId) => {
+    if (!driverId) {
+      const updatedRows = [...productRows];
+      updatedRows[index].selectedDriver = '';
+      updatedRows[index].vehicleNumber = '';
+      updatedRows[index].phoneNumber = '';
+      updatedRows[index].vehicleCapacity = '';
+      setProductRows(updatedRows);
+      return;
+    }
+
+    const currentRow = productRows[index];
+    const newAirport = currentRow.airportName || '';
+
+    // One driver per airport: driver can only be assigned to one airport across all rows
+    const otherRowsWithSameDriver = productRows.filter(
+      (row, i) => i !== index && row.selectedDriver && String(row.selectedDriver) === String(driverId)
+    );
+    const airportAlreadyAssigned = otherRowsWithSameDriver.find((r) => r.airportName)?.airportName;
+    if (airportAlreadyAssigned) {
+      if (newAirport && newAirport !== airportAlreadyAssigned) {
+        const driverName = drivers.find(d => d.did === parseInt(driverId))?.driver_name || 'This driver';
+        alert(`${driverName} is already assigned to "${airportAlreadyAssigned}". One driver can only be assigned to one airport. Please choose another driver or assign this row to the same airport.`);
+        return;
+      }
+      if (!newAirport) {
+        const driverName = drivers.find(d => d.did === parseInt(driverId))?.driver_name || 'This driver';
+        alert(`${driverName} is already assigned to "${airportAlreadyAssigned}". Assign the same airport to this row first, or choose another driver.`);
+        return;
+      }
+    }
+
     const updatedRows = [...productRows];
     updatedRows[index].selectedDriver = driverId;
 
-    // Auto-populate driver info
     const selectedDriverInfo = drivers.find(d => d.did === parseInt(driverId));
     if (selectedDriverInfo) {
       updatedRows[index].vehicleNumber = selectedDriverInfo.vehicle_number || '';
@@ -449,6 +766,22 @@ const OrderAssignCreateStage3 = () => {
   };
 
   const handleAirportNameChange = (index, airportName) => {
+    const currentRow = productRows[index];
+    const currentDriverId = currentRow.selectedDriver;
+
+    // One driver per airport: if this row has a driver, they must stay on one airport
+    if (currentDriverId && airportName) {
+      const otherRowsWithSameDriver = productRows.filter(
+        (row, i) => i !== index && row.selectedDriver && String(row.selectedDriver) === String(currentDriverId)
+      );
+      const airportAlreadyAssigned = otherRowsWithSameDriver.find((r) => r.airportName)?.airportName;
+      if (airportAlreadyAssigned && airportAlreadyAssigned !== airportName) {
+        const driverName = drivers.find(d => d.did === parseInt(currentDriverId))?.driver_name || 'This driver';
+        alert(`${driverName} is already assigned to "${airportAlreadyAssigned}". One driver can only be assigned to one airport. Cannot assign a different airport to this row.`);
+        return;
+      }
+    }
+
     const updatedRows = [...productRows];
     updatedRows[index].airportName = airportName;
 
@@ -463,19 +796,18 @@ const OrderAssignCreateStage3 = () => {
     if (updatedRows[index].noOfPkgs) {
       const numPkgs = parseInt(updatedRows[index].noOfPkgs);
       if (numPkgs > 0) {
-        const currentRow = updatedRows[index];
+        const row = updatedRows[index];
 
-        // Get next available position for this airport (continuous across all products)
         const startPosition = getNextCTPositionForAirport(
           airportName,
-          currentRow.id,
+          row.id,
           numPkgs,
           updatedRows
         );
 
         const endPosition = startPosition + numPkgs - 1;
 
-        if (endPosition - startPosition + 1 <= currentRow.totalBoxes) {
+        if (endPosition - startPosition + 1 <= row.totalBoxes) {
           updatedRows[index].ct = `${startPosition}-${endPosition}`;
         } else {
           updatedRows[index].ct = '';
@@ -505,6 +837,8 @@ const OrderAssignCreateStage3 = () => {
       product: firstRow.product,
       grossWeight: firstRow.grossWeight,
       totalBoxes: firstRow.totalBoxes,
+      availableBoxes: firstRow.availableBoxes,
+      pendingBoxes: firstRow.pendingBoxes,
       labour: firstRow.labour,
       ct: '',
       noOfPkgs: '',
@@ -591,20 +925,32 @@ const OrderAssignCreateStage3 = () => {
         };
       });
 
-      // Generate airport groups for backend storage
+      // Generate airport groups for backend storage: one group per airport (order-wide).
+      // Multiple drivers can deliver to different airports; one driver can have multiple airports.
+      // Tape data is stored per airport inside each group to avoid duplicate/merge issues.
       const airportGroups = {};
       const customerName = orderData?.customer_name || '';
-      const prefix = customerName.replace(/\d+$/, '').trim() || customerName;
+      const prefix = (customerName.replace(/\d+$/, '').trim() || customerName || 'CT').replace(/\s+/g, '');
       const allAirports = [...new Set(productRows.filter(p => p.airportName).map(p => p.airportName))];
 
-      allAirports.forEach((airport, index) => {
+      allAirports.forEach((airportName, index) => {
         const sequentialNumber = String(index + 1).padStart(3, '0');
         const airportCode = `${prefix}${sequentialNumber}`;
-        const airportProducts = productRows.filter(p => p.airportName === airport);
+        const airportProducts = productRows.filter(p => p.airportName === airportName);
+        const rawTape = airportTapeData[airportName];
+        const tapesArray = Array.isArray(rawTape) && rawTape.length > 0
+          ? rawTape.map(t => ({ tapeName: t.tapeName || '', tapeQuantity: t.tapeQuantity != null ? t.tapeQuantity : '', tapeColor: t.tapeColor || '' }))
+          : (rawTape && typeof rawTape === 'object' ? [{ tapeName: rawTape.tapeName || '', tapeQuantity: rawTape.tapeQuantity != null ? rawTape.tapeQuantity : '', tapeColor: rawTape.tapeColor || '' }] : []);
+        const firstTape = tapesArray[0] || {};
 
         airportGroups[airportCode] = {
-          airportName: airport,
+          airportCode,
+          airportName: airportName,
           airportLocation: airportProducts[0]?.airportLocation || '',
+          tapes: tapesArray,
+          tapeName: firstTape.tapeName || '',
+          tapeQuantity: firstTape.tapeQuantity || '',
+          tapeColor: firstTape.tapeColor || '',
           products: airportProducts.map(p => ({
             product: p.product,
             grossWeight: p.grossWeight,
@@ -619,16 +965,27 @@ const OrderAssignCreateStage3 = () => {
         };
       });
 
+      // Array form: one entry per airport (for backends that treat object keys as unique per driver)
+      const airportGroupsArray = allAirports.map((airportName, index) => {
+        const code = `${prefix}${String(index + 1).padStart(3, '0')}`;
+        const g = airportGroups[code];
+        return g ? { ...g } : null;
+      }).filter(Boolean);
+
       const summaryData = {
         driverAssignments,
         airportGroups,
+        airportGroupsArray,
         totalProducts: productRows.length,
         totalDrivers: Object.keys(groupedByDriver).length,
         totalPackages: productRows.reduce((sum, p) => sum + (parseInt(p.noOfPkgs) || 0), 0),
         totalWeight: parseFloat(productRows.reduce((sum, p) => {
           const weightStr = String(p.grossWeight).replace(/[^0-9.]/g, '');
           return sum + (parseFloat(weightStr) || 0);
-        }, 0).toFixed(2))
+        }, 0).toFixed(2)),
+        // When editing an existing Stage 3 assignment, mark it explicitly
+        // so that the backend can avoid re‑reducing tape quantities or stock.
+        isEdit: isEdit === true
       };
 
       // Format products array matching API expectations
@@ -654,7 +1011,9 @@ const OrderAssignCreateStage3 = () => {
       const stage3Data = {
         products,
         summaryData,
-        airportTapeData
+        airportTapeData,
+        stage2BoxStatus: stage2BoxStatus,
+        isEdit: isEdit === true
       };
 
       //console.log('Saving stage 3 data:', JSON.stringify(stage3Data, null, 2));
@@ -746,8 +1105,10 @@ const OrderAssignCreateStage3 = () => {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Gross Weight</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Assigned Labour</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Total Boxes/Bags</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Avl Box</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Pen Box</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">No of Pkgs</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">CT (Auto)</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Total</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Airport Name</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Airport Location</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Select Driver</th>
@@ -786,17 +1147,38 @@ const OrderAssignCreateStage3 = () => {
                         <span className="text-sm font-semibold text-blue-600">{row.totalBoxes || 0}</span>
                       </td>
                     )}
+                    {isFirstOfGroup && (
+                      <td className="px-4 py-4" rowSpan={sameProductRows.length}>
+                        <span className="text-sm font-semibold text-emerald-600">{row.availableBoxes || 0}</span>
+                      </td>
+                    )}
+                    {isFirstOfGroup && (
+                      <td className="px-4 py-4" rowSpan={sameProductRows.length}>
+                        <span className="text-sm font-semibold text-yellow-600">{row.pendingBoxes || 0}</span>
+                      </td>
+                    )}
                     <td className="px-4 py-4">
-                      <input
-                        type="number"
-                        value={row.noOfPkgs}
-                        onChange={(e) => handleNoOfPkgsChange(index, e.target.value)}
-                        onBlur={() => handleNoOfPkgsBlur(index)}
-                        placeholder="Enter packages"
-                        min="1"
-                        max={row.totalBoxes}
-                        className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
-                      />
+                      <div className="flex flex-col gap-0.5">
+                        <input
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-0`] = el;
+                          }}
+                          type="text"
+                          value={row.noOfPkgs}
+                          onChange={(e) => handleNoOfPkgsChange(index, e.target.value)}
+                          onBlur={() => handleNoOfPkgsBlur(index)}
+                          onKeyDown={(e) => handleKeyDown(e, index, 0, productRows.length)}
+                          placeholder="Enter packages"
+                          className={`w-28 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 ${
+                            noOfPkgsWarning[row.id]
+                              ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50'
+                              : 'border-gray-300 focus:ring-emerald-500 focus:border-emerald-500'
+                          }`}
+                        />
+                        {noOfPkgsWarning[row.id] && (
+                          <span className="text-xs text-red-600 font-medium">{noOfPkgsWarning[row.id]}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <span className="text-sm text-gray-900 font-medium">{row.ct || '-'}</span>
@@ -804,9 +1186,13 @@ const OrderAssignCreateStage3 = () => {
                     <td className="px-4 py-4">
                       <div className="relative">
                         <select
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-1`] = el;
+                          }}
                           value={row.airportName}
                           onChange={(e) => handleAirportNameChange(index, e.target.value)}
-                          className="w-64 appearance-none px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
+                          onKeyDown={(e) => handleKeyDown(e, index, 1, productRows.length)}
+                          className="min-w-[220px] w-64 appearance-none px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
                         >
                           <option value="">Select airport...</option>
                           {airports.map((airport) => (
@@ -824,14 +1210,18 @@ const OrderAssignCreateStage3 = () => {
                     <td className="px-4 py-4">
                       <div className="relative">
                         <select
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-2`] = el;
+                          }}
                           value={row.selectedDriver}
                           onChange={(e) => handleDriverChange(index, e.target.value)}
-                          className="w-full appearance-none px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
+                          onKeyDown={(e) => handleKeyDown(e, index, 2, productRows.length)}
+                          className="min-w-[220px] w-64 appearance-none px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
                         >
                           <option value="">Select driver...</option>
                           {drivers.map(driver => (
                             <option key={driver.did} value={driver.did}>
-                              {driver.driver_name}
+                              {`${driver.driver_name} (${driver.driver_id || driver.did})`}
                             </option>
                           ))}
                         </select>
@@ -1043,54 +1433,57 @@ const OrderAssignCreateStage3 = () => {
                                               <p className="text-xs text-gray-600 font-medium">{airport}</p>
                                             </div>
 
-                                            <div className="space-y-2">
-                                              <div>
-                                                <label className="block text-xs font-semibold text-gray-700 mb-1">Tape Name</label>
-                                                <select
-                                                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                                                  value={airportTapeData[airport]?.tapeName || ''}
-                                                  onChange={(e) => {
-                                                    const selectedName = e.target.value;
-                                                    const selectedTape = tapes.find(t => t.name === selectedName);
-                                                    const tapeColor = selectedTape?.color || '';
-
-                                                    setAirportTapeData(prev => ({
-                                                      ...prev,
-                                                      [airport]: {
-                                                        ...prev[airport],
-                                                        tapeName: selectedName,
-                                                        tapeColor: tapeColor
-                                                      }
-                                                    }));
-                                                  }}
-                                                >
-                                                  <option value="">Select tape...</option>
-                                                  {tapes.map(tape => (
-                                                    <option key={tape.iid} value={tape.name}>
-                                                      {tape.name}
-                                                    </option>
-                                                  ))}
-                                                </select>
-                                              </div>
-
-                                              <div>
-                                                <label className="block text-xs font-semibold text-gray-700 mb-1">Tape Quantity</label>
-                                                <input
-                                                  type="text"
-                                                  value={airportTapeData[airport]?.tapeQuantity || ''}
-                                                  placeholder="Enter quantity"
-                                                  onChange={(e) => {
-                                                    setAirportTapeData(prev => ({
-                                                      ...prev,
-                                                      [airport]: {
-                                                        ...prev[airport],
-                                                        tapeQuantity: e.target.value
-                                                      }
-                                                    }));
-                                                  }}
-                                                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                                />
-                                              </div>
+                                            <div className="space-y-3">
+                                              {getTapesForAirport(airport).map((tapeEntry, tapeIndex) => (
+                                                <div key={tapeIndex} className="flex gap-2 items-end border border-gray-200 rounded p-2 bg-gray-50/50">
+                                                  <div className="flex-1 min-w-0 space-y-1">
+                                                    <label className="block text-xs font-semibold text-gray-700">Tape Name</label>
+                                                    <select
+                                                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                                                      value={tapeEntry.tapeName || ''}
+                                                      onChange={(e) => {
+                                                        const selectedName = e.target.value;
+                                                        const selectedTape = tapes.find(t => t.name === selectedName);
+                                                        updateTapeForAirport(airport, tapeIndex, { tapeName: selectedName, tapeColor: selectedTape?.color || '' });
+                                                      }}
+                                                    >
+                                                      <option value="">Select tape...</option>
+                                                      {tapes.map(tape => (
+                                                        <option key={tape.iid} value={tape.name}>{tape.name}</option>
+                                                      ))}
+                                                    </select>
+                                                  </div>
+                                                  <div className="flex-1 min-w-0 space-y-1">
+                                                    <label className="block text-xs font-semibold text-gray-700">Qty</label>
+                                                    <input
+                                                      type="text"
+                                                      value={tapeEntry.tapeQuantity ?? ''}
+                                                      placeholder="Qty"
+                                                      onChange={(e) => updateTapeForAirport(airport, tapeIndex, 'tapeQuantity', e.target.value)}
+                                                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                                    />
+                                                  </div>
+                                                  <div className="flex items-center gap-1">
+                                                    {getTapesForAirport(airport).length > 1 && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => removeTapeForAirport(airport, tapeIndex)}
+                                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                                                        title="Remove tape"
+                                                      >
+                                                        <X className="w-4 h-4" />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                              <button
+                                                type="button"
+                                                onClick={() => addTapeForAirport(airport)}
+                                                className="flex items-center gap-1.5 w-full justify-center py-2 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 text-xs font-medium"
+                                              >
+                                                <Plus className="w-4 h-4" /> Add another tape
+                                              </button>
                                             </div>
                                           </div>
                                         );
@@ -1268,54 +1661,55 @@ const OrderAssignCreateStage3 = () => {
                                         <p className="text-xs text-gray-600 font-medium">{airport}</p>
                                       </div>
 
-                                      <div className="space-y-2">
-                                        <div>
-                                          <label className="block text-xs font-semibold text-gray-700 mb-1">Tape Name</label>
-                                          <select
-                                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                                            value={airportTapeData[airport]?.tapeName || ''}
-                                            onChange={(e) => {
-                                              const selectedName = e.target.value;
-                                              const selectedTape = tapes.find(t => t.name === selectedName);
-                                              const tapeColor = selectedTape?.color || '';
-
-                                              setAirportTapeData(prev => ({
-                                                ...prev,
-                                                [airport]: {
-                                                  ...prev[airport],
-                                                  tapeName: selectedName,
-                                                  tapeColor: tapeColor
-                                                }
-                                              }));
-                                            }}
-                                          >
-                                            <option value="">Select tape...</option>
-                                            {tapes.map(tape => (
-                                              <option key={tape.iid} value={tape.name}>
-                                                {tape.name}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </div>
-
-                                        <div>
-                                          <label className="block text-xs font-semibold text-gray-700 mb-1">Tape Quantity</label>
-                                          <input
-                                            type="text"
-                                            value={airportTapeData[airport]?.tapeQuantity || ''}
-                                            placeholder="Enter quantity"
-                                            onChange={(e) => {
-                                              setAirportTapeData(prev => ({
-                                                ...prev,
-                                                [airport]: {
-                                                  ...prev[airport],
-                                                  tapeQuantity: e.target.value
-                                                }
-                                              }));
-                                            }}
-                                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                          />
-                                        </div>
+                                      <div className="space-y-3">
+                                        {getTapesForAirport(airport).map((tapeEntry, tapeIndex) => (
+                                          <div key={tapeIndex} className="flex gap-2 items-end border border-gray-200 rounded p-2 bg-gray-50/50">
+                                            <div className="flex-1 min-w-0 space-y-1">
+                                              <label className="block text-xs font-semibold text-gray-700">Tape Name</label>
+                                              <select
+                                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                                                value={tapeEntry.tapeName || ''}
+                                                onChange={(e) => {
+                                                  const selectedName = e.target.value;
+                                                  const selectedTape = tapes.find(t => t.name === selectedName);
+                                                  updateTapeForAirport(airport, tapeIndex, { tapeName: selectedName, tapeColor: selectedTape?.color || '' });
+                                                }}
+                                              >
+                                                <option value="">Select tape...</option>
+                                                {tapes.map(tape => (
+                                                  <option key={tape.iid} value={tape.name}>{tape.name}</option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                            <div className="flex-1 min-w-0 space-y-1">
+                                              <label className="block text-xs font-semibold text-gray-700">Qty</label>
+                                              <input
+                                                type="text"
+                                                value={tapeEntry.tapeQuantity ?? ''}
+                                                placeholder="Qty"
+                                                onChange={(e) => updateTapeForAirport(airport, tapeIndex, 'tapeQuantity', e.target.value)}
+                                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                              />
+                                            </div>
+                                            {getTapesForAirport(airport).length > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => removeTapeForAirport(airport, tapeIndex)}
+                                                className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                                                title="Remove tape"
+                                              >
+                                                <X className="w-4 h-4" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          onClick={() => addTapeForAirport(airport)}
+                                          className="flex items-center gap-1.5 w-full justify-center py-2 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 text-xs font-medium"
+                                        >
+                                          <Plus className="w-4 h-4" /> Add another tape
+                                        </button>
                                       </div>
                                     </div>
                                   );
@@ -1412,7 +1806,7 @@ const OrderAssignCreateStage3 = () => {
           onClick={handleConfirmAssignment}
           className="px-6 py-3 bg-emerald-600 text-white rounded-lg font-medium shadow-sm hover:bg-emerald-700 transition-colors"
         >
-          Confirm Assignment
+          {isEdit ? 'Edit Assignment' : 'Confirm Assignment'}
         </button>
       </div>
     </div>

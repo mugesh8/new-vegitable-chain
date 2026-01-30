@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Check, ChevronDown, Package, User } from 'lucide-react';
 import { updateStage2Assignment, getOrderAssignment, getAvailableStock } from '../../../api/orderAssignmentApi';
@@ -28,6 +28,106 @@ const OrderAssignCreateStage2 = () => {
   const [labourTotalAmounts, setLabourTotalAmounts] = useState({});
   const [labourRates, setLabourRates] = useState({});
   const [stage2Status, setStage2Status] = useState(null); // Store stage2_status from assignment data
+  
+  // Refs for keyboard navigation
+  const inputGridRefs = useRef({});
+
+  // Handle arrow key navigation between inputs
+  const handleKeyDown = (e, rowIndex, colIndex, totalRows) => {
+    const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!arrowKeys.includes(e.key)) return;
+
+    e.preventDefault();
+    
+    // Column mapping: 0=Wastage, 1=Packed Amount, 2=Reuse (only for first vendor)
+    // For labour rows: column 3=Packed Boxes
+    const columnCount = 3; // Main columns: Wastage, Packed Amount, Reuse
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+    
+    switch (e.key) {
+      case 'ArrowRight':
+        nextCol = colIndex + 1;
+        if (nextCol >= columnCount) {
+          nextCol = 0;
+          nextRow = Math.min(nextRow + 1, totalRows - 1);
+        }
+        break;
+      case 'ArrowLeft':
+        nextCol = colIndex - 1;
+        if (nextCol < 0) {
+          nextCol = columnCount - 1;
+          nextRow = Math.max(nextRow - 1, 0);
+        }
+        break;
+      case 'ArrowDown':
+        nextRow = Math.min(nextRow + 1, totalRows - 1);
+        break;
+      case 'ArrowUp':
+        nextRow = Math.max(nextRow - 1, 0);
+        break;
+    }
+    
+    // Get the next input element
+    const nextInputKey = `${nextRow}-${nextCol}`;
+    const nextInput = inputGridRefs.current[nextInputKey];
+    
+    if (nextInput) {
+      nextInput.focus();
+      // Select all text for easy editing (only for input elements, not selects)
+      if (nextInput.select && nextInput.tagName === 'INPUT') {
+        setTimeout(() => nextInput.select(), 0);
+      }
+    }
+  };
+
+  // Handle arrow key navigation for Packaging Summary section
+  const handleSummaryKeyDown = (e, labourName, rowIndex, colIndex, totalRows) => {
+    const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!arrowKeys.includes(e.key)) return;
+
+    e.preventDefault();
+    
+    // Column mapping: 0=Start Time, 1=End Time, 2=Packed Boxes, 3=Status
+    const columnCount = 4;
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+    
+    switch (e.key) {
+      case 'ArrowRight':
+        nextCol = colIndex + 1;
+        if (nextCol >= columnCount) {
+          nextCol = 0;
+          nextRow = Math.min(nextRow + 1, totalRows - 1);
+        }
+        break;
+      case 'ArrowLeft':
+        nextCol = colIndex - 1;
+        if (nextCol < 0) {
+          nextCol = columnCount - 1;
+          nextRow = Math.max(nextRow - 1, 0);
+        }
+        break;
+      case 'ArrowDown':
+        nextRow = Math.min(nextRow + 1, totalRows - 1);
+        break;
+      case 'ArrowUp':
+        nextRow = Math.max(nextRow - 1, 0);
+        break;
+    }
+    
+    // Get the next input element (key format: summary-{labourName}-{rowIndex}-{colIndex})
+    const nextInputKey = `summary-${labourName}-${nextRow}-${nextCol}`;
+    const nextInput = inputGridRefs.current[nextInputKey];
+    
+    if (nextInput) {
+      nextInput.focus();
+      // Select all text for easy editing (only for input elements, not selects)
+      if (nextInput.select && nextInput.tagName === 'INPUT' && nextInput.type !== 'time') {
+        setTimeout(() => nextInput.select(), 0);
+      }
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -718,9 +818,13 @@ const OrderAssignCreateStage2 = () => {
                     </td>
                     <td className="px-4 py-4">
                       <input
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-0`] = el;
+                        }}
                         type="text"
                         value={row.wastage}
                         placeholder="Enter wastage"
+                        onKeyDown={(e) => handleKeyDown(e, index, 0, productRows.length)}
                         onChange={(e) => {
                           const updatedRows = [...productRows];
                           updatedRows[index].wastage = e.target.value;
@@ -763,9 +867,13 @@ const OrderAssignCreateStage2 = () => {
                     )}
                     <td className="px-4 py-4">
                       <input
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-1`] = el;
+                        }}
                         type="text"
                         value={row.packedAmount}
                         placeholder="Enter packed kgs"
+                        onKeyDown={(e) => handleKeyDown(e, index, 1, productRows.length)}
                         onChange={(e) => {
                           const updatedRows = [...productRows];
                           updatedRows[index].packedAmount = e.target.value;
@@ -799,9 +907,13 @@ const OrderAssignCreateStage2 = () => {
                     {row.isFirstVendor && (
                       <td className="px-4 py-4" rowSpan={rowSpan}>
                         <input
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-2`] = el;
+                          }}
                           type="text"
                           value={row.reuse}
                           placeholder="Enter reuse"
+                          onKeyDown={(e) => handleKeyDown(e, index, 2, productRows.length)}
                           onChange={(e) => {
                             const updatedRows = [...productRows];
                             sameProductRows.forEach(r => {
@@ -961,9 +1073,13 @@ const OrderAssignCreateStage2 = () => {
                             <div>
                               <label className="text-xs text-gray-500 block mb-1">Wastage</label>
                               <input
+                                ref={(el) => {
+                                  if (el) inputGridRefs.current[`mobile-${rowIndex}-0`] = el;
+                                }}
                                 type="text"
                                 value={row.wastage}
                                 placeholder="Enter wastage"
+                                onKeyDown={(e) => handleKeyDown(e, rowIndex, 0, productRows.length)}
                                 onChange={(e) => {
                                   const updatedRows = [...productRows];
                                   updatedRows[rowIndex].wastage = e.target.value;
@@ -986,9 +1102,13 @@ const OrderAssignCreateStage2 = () => {
                             <div>
                               <label className="text-xs text-gray-500 block mb-1">Packed Amount (kg)</label>
                               <input
+                                ref={(el) => {
+                                  if (el) inputGridRefs.current[`mobile-${rowIndex}-1`] = el;
+                                }}
                                 type="text"
                                 value={row.packedAmount}
                                 placeholder="Enter packed amount"
+                                onKeyDown={(e) => handleKeyDown(e, rowIndex, 1, productRows.length)}
                                 onChange={(e) => {
                                   const updatedRows = [...productRows];
                                   updatedRows[rowIndex].packedAmount = e.target.value;
@@ -1020,9 +1140,13 @@ const OrderAssignCreateStage2 = () => {
                             <div>
                               <label className="text-xs text-gray-500 block mb-1">Reuse</label>
                               <input
+                                ref={(el) => {
+                                  if (el) inputGridRefs.current[`mobile-${rowIndex}-2`] = el;
+                                }}
                                 type="text"
                                 value={row.reuse}
                                 placeholder="Enter reuse"
+                                onKeyDown={(e) => handleKeyDown(e, rowIndex, 2, productRows.length)}
                                 onChange={(e) => {
                                   const updatedRows = [...productRows];
                                   updatedRows[rowIndex].reuse = e.target.value;
@@ -1203,8 +1327,14 @@ const OrderAssignCreateStage2 = () => {
                               </td>
                               <td className="px-4 py-3">
                                 <input
+                                  ref={(el) => {
+                                    if (el) {
+                                      inputGridRefs.current[`summary-${labourName}-${idx}-0`] = el;
+                                    }
+                                  }}
                                   type="time"
                                   value={row[`startTime_${row.id}-${labourName}`] || ''}
+                                  onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 0, rows.length)}
                                   onChange={(e) => {
                                     const updatedRows = [...productRows];
                                     const rowIndex = productRows.findIndex(r => r.id === row.id);
@@ -1218,8 +1348,14 @@ const OrderAssignCreateStage2 = () => {
                               </td>
                               <td className="px-4 py-3">
                                 <input
+                                  ref={(el) => {
+                                    if (el) {
+                                      inputGridRefs.current[`summary-${labourName}-${idx}-1`] = el;
+                                    }
+                                  }}
                                   type="time"
                                   value={row[`endTime_${row.id}-${labourName}`] || ''}
+                                  onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 1, rows.length)}
                                   onChange={(e) => {
                                     const updatedRows = [...productRows];
                                     const rowIndex = productRows.findIndex(r => r.id === row.id);
@@ -1233,9 +1369,15 @@ const OrderAssignCreateStage2 = () => {
                               </td>
                               <td className="px-4 py-3">
                                 <input
-                                  type="number"
+                                  ref={(el) => {
+                                    if (el) {
+                                      inputGridRefs.current[`summary-${labourName}-${idx}-2`] = el;
+                                    }
+                                  }}
+                                  type="text"
                                   value={row[`packedBoxes_${row.id}-${labourName}`] || ''}
                                   placeholder="Enter boxes"
+                                  onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 2, rows.length)}
                                   onChange={(e) => {
                                     const updatedRows = [...productRows];
                                     const rowIndex = productRows.findIndex(r => r.id === row.id);
@@ -1249,6 +1391,12 @@ const OrderAssignCreateStage2 = () => {
                               </td>
                               <td>
                                 <select
+                                  ref={(el) => {
+                                    if (el) {
+                                      inputGridRefs.current[`summary-${labourName}-${idx}-3`] = el;
+                                    }
+                                  }}
+                                  onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 3, rows.length)}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                                   value={row[`status_${row.id}-${labourName}`] || 'pending'}
                                   onChange={(e) => {
@@ -1351,6 +1499,12 @@ const OrderAssignCreateStage2 = () => {
                             <div className="pt-2 border-t border-gray-200">
                               <label className="block text-xs font-semibold text-gray-700 mb-1">Status</label>
                               <select
+                                ref={(el) => {
+                                  if (el) {
+                                    inputGridRefs.current[`summary-mobile-${labourName}-${idx}-3`] = el;
+                                  }
+                                }}
+                                onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 3, rows.length)}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                                 value={row[`status_${row.id}-${labourName}`] || 'pending'}
                                 onChange={(e) => {
@@ -1370,9 +1524,15 @@ const OrderAssignCreateStage2 = () => {
                             <div className="pt-2">
                               <label className="block text-xs font-semibold text-gray-700 mb-1">Packed Boxes</label>
                               <input
-                                type="number"
+                                ref={(el) => {
+                                  if (el) {
+                                    inputGridRefs.current[`summary-mobile-${labourName}-${idx}-2`] = el;
+                                  }
+                                }}
+                                type="text"
                                 value={row[`packedBoxes_${row.id}-${labourName}`] || ''}
                                 placeholder="Enter boxes"
+                                onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 2, rows.length)}
                                 onChange={(e) => {
                                   const updatedRows = [...productRows];
                                   const rowIndex = productRows.findIndex(r => r.id === row.id);
@@ -1387,8 +1547,14 @@ const OrderAssignCreateStage2 = () => {
                             <div className="pt-2">
                               <label className="block text-xs font-semibold text-gray-700 mb-1">Start Time</label>
                               <input
+                                ref={(el) => {
+                                  if (el) {
+                                    inputGridRefs.current[`summary-mobile-${labourName}-${idx}-0`] = el;
+                                  }
+                                }}
                                 type="time"
                                 value={row[`startTime_${row.id}-${labourName}`] || ''}
+                                onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 0, rows.length)}
                                 onChange={(e) => {
                                   const updatedRows = [...productRows];
                                   const rowIndex = productRows.findIndex(r => r.id === row.id);
@@ -1403,8 +1569,14 @@ const OrderAssignCreateStage2 = () => {
                             <div className="pt-2">
                               <label className="block text-xs font-semibold text-gray-700 mb-1">End Time</label>
                               <input
+                                ref={(el) => {
+                                  if (el) {
+                                    inputGridRefs.current[`summary-mobile-${labourName}-${idx}-1`] = el;
+                                  }
+                                }}
                                 type="time"
                                 value={row[`endTime_${row.id}-${labourName}`] || ''}
+                                onKeyDown={(e) => handleSummaryKeyDown(e, labourName, idx, 1, rows.length)}
                                 onChange={(e) => {
                                   const updatedRows = [...productRows];
                                   const rowIndex = productRows.findIndex(r => r.id === row.id);

@@ -34,12 +34,61 @@ const LocalOrderAssign = () => {
   const [orderDetails, setOrderDetails] = useState(orderData || null);
   const [assignmentStatuses, setAssignmentStatuses] = useState({});
   const [availableStock, setAvailableStock] = useState({});
-    const [farmerAvailability, setFarmerAvailability] = useState({});
-    const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
-    const [labourDropdownOpen, setLabourDropdownOpen] = useState({});
-    const [labourDropdownPosition, setLabourDropdownPosition] = useState({});
-    const labourButtonRefs = useRef({});
-    const labourDropdownRef = useRef(null);
+  const [farmerAvailability, setFarmerAvailability] = useState({});
+  const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
+  const [labourDropdownOpen, setLabourDropdownOpen] = useState({});
+  const [labourDropdownPosition, setLabourDropdownPosition] = useState({});
+  const labourButtonRefs = useRef({});
+  const labourDropdownRef = useRef(null);
+
+  // Keyboard navigation for main product table (Local Order Assign)
+  // Column mapping: 0=Entity Type, 1=Name, 2=Place, 3=Picked Qty/Boxes
+  const inputGridRefs = useRef({});
+
+  const handleKeyDown = (e, rowIndex, colIndex, totalRows) => {
+    const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!arrowKeys.includes(e.key)) return;
+
+    e.preventDefault();
+
+    const columnCount = 4;
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+
+    switch (e.key) {
+      case 'ArrowRight':
+        nextCol = colIndex + 1;
+        if (nextCol >= columnCount) {
+          nextCol = 0;
+          nextRow = Math.min(nextRow + 1, totalRows - 1);
+        }
+        break;
+      case 'ArrowLeft':
+        nextCol = colIndex - 1;
+        if (nextCol < 0) {
+          nextCol = columnCount - 1;
+          nextRow = Math.max(nextRow - 1, 0);
+        }
+        break;
+      case 'ArrowDown':
+        nextRow = Math.min(nextRow + 1, totalRows - 1);
+        break;
+      case 'ArrowUp':
+        nextRow = Math.max(nextRow - 1, 0);
+        break;
+      default:
+        break;
+    }
+
+    const nextKey = `${nextRow}-${nextCol}`;
+    const nextInput = inputGridRefs.current[nextKey];
+    if (nextInput) {
+      nextInput.focus();
+      if (nextInput.tagName === 'INPUT' && nextInput.select) {
+        setTimeout(() => nextInput.select(), 0);
+      }
+    }
+  };
 
   // Fetch available stock and farmer availability on component mount
   useEffect(() => {
@@ -1305,6 +1354,10 @@ const LocalOrderAssign = () => {
                     )}
                     <td className="px-4 py-4">
                       <select
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-0`] = el;
+                        }}
+                        onKeyDown={(e) => handleKeyDown(e, index, 0, displayRows.length)}
                         className="min-w-[130px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                         value={row.entityType || ''}
                         onChange={(e) => {
@@ -1336,6 +1389,10 @@ const LocalOrderAssign = () => {
                     </td>
                     <td className="px-4 py-4">
                       <select
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-1`] = el;
+                        }}
+                        onKeyDown={(e) => handleKeyDown(e, index, 1, displayRows.length)}
                         className="min-w-[150px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                         value={row.assignedTo}
                         disabled={!row.entityType}
@@ -1403,6 +1460,10 @@ const LocalOrderAssign = () => {
                     </td>
                     <td className="px-4 py-4">
                       <select
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-2`] = el;
+                        }}
+                        onKeyDown={(e) => handleKeyDown(e, index, 2, displayRows.length)}
                         className="min-w-[140px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                         value={(() => {
                           const val = row.isRemaining ? (remainingRowAssignments[row.id]?.place || '') : (row.place || '');
@@ -1429,10 +1490,13 @@ const LocalOrderAssign = () => {
                     {isBoxBasedOrder && (
                       <td className="px-4 py-4">
                         <input
-                          type="number"
-                          step="1"
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-3`] = el;
+                          }}
+                          type="text"
                           value={row.assignedBoxes || ''}
-                          placeholder="0"
+                          placeholder=""
+                          onKeyDown={(e) => handleKeyDown(e, index, 3, displayRows.length)}
                           onChange={(e) => {
                             const newBoxes = e.target.value;
                             if (row.isRemaining) {
@@ -1484,10 +1548,13 @@ const LocalOrderAssign = () => {
                     {!isBoxBasedOrder && (
                       <td className="px-4 py-4">
                         <input
-                          type="number"
-                          step="0.01"
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-3`] = el;
+                          }}
+                          type="text"
                           value={row.assignedQty || ''}
-                          placeholder="0"
+                          placeholder=""
+                          onKeyDown={(e) => handleKeyDown(e, index, 3, displayRows.length)}
                           onChange={(e) => {
                             const newQty = e.target.value;
                             if (row.isRemaining) {
@@ -1714,10 +1781,9 @@ const LocalOrderAssign = () => {
                         Picked Qty <span className="text-red-500">*</span>
                       </label>
                       <input
-                        type="number"
-                        step="0.01"
+                        type="text"
                         value={row.assignedQty || ''}
-                        placeholder="0"
+                        placeholder=""
                         onChange={(e) => {
                           const newQty = e.target.value;
                           if (row.isRemaining) {

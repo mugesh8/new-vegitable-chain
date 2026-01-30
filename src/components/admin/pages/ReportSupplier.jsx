@@ -363,21 +363,108 @@ const ReportSupplier = () => {
             return;
         }
 
-        const exportData = filteredData.map(s => ({
-            'Supplier ID': s.supplierId,
-            'Supplier Name': s.supplierName,
-            'Phone': s.supplierPhone,
-            'Orders': s.orderCount,
-            'Total Amount': parseFloat(s.totalAmount).toFixed(2),
-            'Paid Amount': parseFloat(s.paidAmount).toFixed(2),
-            'Pending Amount': parseFloat(s.pendingAmount).toFixed(2)
-        }));
+    const exportData = filteredData.map(s => {
+      // Collect all unique products supplied by this supplier across all orders
+      const productSet = new Set();
+      orderHistoryData.forEach(({ supplierData }) => {
+        const supplierInfo = supplierData.find(sd => sd.supplierId == s.supplierId);
+        if (supplierInfo && Array.isArray(supplierInfo.assignments)) {
+          supplierInfo.assignments.forEach(a => {
+            const name = cleanProductName(a.product);
+            if (name) productSet.add(name);
+          });
+        }
+      });
 
-        const worksheet = XLSX.utils.json_to_sheet(exportData);
-        // Auto-size
-        worksheet['!cols'] = [{ wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+      const products = Array.from(productSet).join(', ');
+
+      return {
+        'Supplier ID': s.supplierId,
+        'Supplier Name': s.supplierName,
+        'Phone': s.supplierPhone,
+        'Orders': s.orderCount,
+        'Total Amount': parseFloat(s.totalAmount).toFixed(2),
+        'Paid Amount': parseFloat(s.paidAmount).toFixed(2),
+        'Pending Amount': parseFloat(s.pendingAmount).toFixed(2),
+        'Products': products || 'N/A'
+      };
+    });
+
+        // Sheet 1: Supplier summary (existing)
+        const summarySheet = XLSX.utils.json_to_sheet(exportData);
+        summarySheet['!cols'] = [
+          { wch: 10 }, // ID
+          { wch: 20 }, // Name
+          { wch: 15 }, // Phone
+          { wch: 10 }, // Orders
+          { wch: 15 }, // Total Amount
+          { wch: 15 }, // Paid Amount
+          { wch: 15 }, // Pending Amount
+          { wch: 30 }  // Products
+        ];
+
+        // Sheet 2: Line items with Order ID, Qty, Boxes, Price/Kg
+        const lineItems = [];
+        filteredData.forEach(s => {
+          orderHistoryData.forEach(({ order, supplierData }) => {
+            const supplierInfo = supplierData.find(sd => sd.supplierId == s.supplierId);
+            if (supplierInfo && Array.isArray(supplierInfo.assignments)) {
+              const orderDate = order.createdAt
+                ? new Date(order.createdAt).toLocaleDateString('en-GB')
+                : 'N/A';
+
+              supplierInfo.assignments.forEach(a => {
+                const boxes = parseInt(a.assignedBoxes) || 0;
+                const qty = parseFloat(a.assignedQty) || 0;
+                const pricePerKg = parseFloat(a.price) || 0;
+                const amount = qty * pricePerKg;
+                const isPaid =
+                  order.payment_status === 'paid' ||
+                  order.payment_status === 'completed';
+                const paid = isPaid ? amount : 0;
+                const outstanding = isPaid ? 0 : amount;
+
+                const productName = cleanProductName(a.product) || 'N/A';
+
+                lineItems.push({
+                  'Supplier ID': s.supplierId,
+                  'Supplier Name': s.supplierName,
+                  'Order Date': orderDate,
+                  'Order ID': order.oid || order.order_id || '',
+                  'Product': productName,
+                  'Qty (KG)': qty,
+                  'Boxes': boxes,
+                  'Price/KG': pricePerKg,
+                  'Amount': amount,
+                  'Paid': paid,
+                  'O/S': outstanding
+                });
+              });
+            }
+          });
+        });
+
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Suppliers');
+        XLSX.utils.book_append_sheet(workbook, summarySheet, 'Suppliers');
+
+        if (lineItems.length > 0) {
+          const lineSheet = XLSX.utils.json_to_sheet(lineItems);
+          lineSheet['!cols'] = [
+            { wch: 12 }, // Supplier ID
+            { wch: 20 }, // Supplier Name
+            { wch: 12 }, // Order Date
+            { wch: 15 }, // Order ID
+            { wch: 25 }, // Product
+            { wch: 10 }, // Qty (KG)
+            { wch: 8 },  // Boxes
+            { wch: 10 }, // Price/KG
+            { wch: 12 }, // Amount
+            { wch: 10 }, // Paid
+            { wch: 10 }  // O/S
+          ];
+          XLSX.utils.book_append_sheet(workbook, lineSheet, 'Line Items');
+        }
+
         XLSX.writeFile(workbook, `Suppliers_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
@@ -387,25 +474,61 @@ const ReportSupplier = () => {
             return;
         }
 
-        const doc = new jsPDF();
+        const doc = new jsPDF('p', 'pt', 'a4');
         doc.setFontSize(16);
-        doc.text('Supplier Report', 105, 15, { align: 'center' });
+        doc.text('Supplier Report', 300, 30, { align: 'center' });
 
-        const tableData = filteredData.map(s => [
-            s.supplierId,
-            s.supplierName,
-            s.supplierPhone,
-            s.orderCount,
-            s.totalAmount.toFixed(2),
-            s.pendingAmount > 0 ? 'Pending' : 'Paid'
-        ]);
+        // Build line-item level data (same idea as Excel "Line Items" sheet)
+        const lineItems = [];
+        filteredData.forEach(s => {
+          orderHistoryData.forEach(({ order, supplierData }) => {
+            const supplierInfo = supplierData.find(sd => sd.supplierId == s.supplierId);
+            if (supplierInfo && Array.isArray(supplierInfo.assignments)) {
+              const orderDate = order.createdAt
+                ? new Date(order.createdAt).toLocaleDateString('en-GB')
+                : 'N/A';
+
+              supplierInfo.assignments.forEach(a => {
+                const boxes = parseInt(a.assignedBoxes) || 0;
+                const qty = parseFloat(a.assignedQty) || 0;
+                const pricePerKg = parseFloat(a.price) || 0;
+                const amount = qty * pricePerKg;
+
+                const productName = cleanProductName(a.product) || 'N/A';
+
+                lineItems.push([
+                  s.supplierId,
+                  s.supplierName,
+                  orderDate,
+                  order.oid || order.order_id || '',
+                  productName,
+                  qty,
+                  boxes,
+                  pricePerKg,
+                  amount
+                ]);
+              });
+            }
+          });
+        });
 
         doc.autoTable({
-            startY: 25,
-            head: [['ID', 'Name', 'Phone', 'Orders', 'Amount', 'Status']],
-            body: tableData,
-            theme: 'grid',
-            headStyles: { fillColor: [13, 92, 77] },
+          startY: 50,
+          head: [[
+            'Supplier ID',
+            'Supplier Name',
+            'Order Date',
+            'Order ID',
+            'Product',
+            'Qty (KG)',
+            'Boxes',
+            'Price/KG',
+            'Amount'
+          ]],
+          body: lineItems,
+          theme: 'grid',
+          headStyles: { fillColor: [13, 92, 77], textColor: 255, halign: 'center' },
+          styles: { fontSize: 8 },
         });
 
         doc.save(`Suppliers_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -455,8 +578,8 @@ const ReportSupplier = () => {
         wsData.push(['#N/A']);
         wsData.push(['#N/A']);
 
-        // Table Header (Row 8)
-        wsData.push(['S.NO', 'DATE', 'PRODUCT', 'UNIT', 'KGS', 'PRICE', 'AMOUNT', 'PAID', 'O/S', 'REMARKS']);
+        // Table Header (Row 8) - show order id, qty, boxes, price/kg
+        wsData.push(['S.NO', 'DATE', 'ORDER ID', 'PRODUCT', 'QTY (KG)', 'BOXES', 'PRICE/KG', 'AMOUNT', 'PAID', 'O/S', 'REMARKS']);
 
         // Data rows
         let serialNo = 1;
@@ -465,14 +588,12 @@ const ReportSupplier = () => {
 
             supplierInfo.assignments.forEach((assignment) => {
                 const boxes = parseInt(assignment.assignedBoxes) || 0;
-                const qty = parseFloat(assignment.assignedQty) || 0;
-                const displayQty = boxes > 0 ? boxes : qty;
-                const price = parseFloat(assignment.price) || 0;
-                const amount = displayQty * price;
+                const qty = parseFloat(assignment.assignedQty) || 0; // quantity in KG
+                const pricePerKg = parseFloat(assignment.price) || 0;
+                const amount = qty * pricePerKg;
                 const isPaid = order.payment_status === 'paid' || order.payment_status === 'completed';
                 const paid = isPaid ? amount : 0;
                 const outstanding = isPaid ? 0 : amount;
-                const unit = boxes > 0 ? `BOX ${boxes}` : 'STOCK';
 
                 // Clean product name - remove box/bag information
                 let productName = (assignment.product || 'N/A').toUpperCase();
@@ -481,10 +602,11 @@ const ReportSupplier = () => {
                 wsData.push([
                     serialNo,
                     orderDate,
+                    order.oid || order.order_id || '',
                     productName,
-                    unit,
-                    displayQty,
-                    price || 0,
+                    qty || 0,
+                    boxes || 0,
+                    pricePerKg || 0,
                     amount || 0,
                     paid || 0,
                     outstanding || 0,
@@ -496,9 +618,19 @@ const ReportSupplier = () => {
 
         // Create worksheet
         const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+        // Adjust column widths for new columns
         worksheet['!cols'] = [
-            { wch: 8 }, { wch: 12 }, { wch: 25 }, { wch: 10 }, { wch: 8 },
-            { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 }
+            { wch: 6 },  // S.NO
+            { wch: 12 }, // DATE
+            { wch: 14 }, // ORDER ID
+            { wch: 25 }, // PRODUCT
+            { wch: 10 }, // QTY (KG)
+            { wch: 8 },  // BOXES
+            { wch: 10 }, // PRICE/KG
+            { wch: 12 }, // AMOUNT
+            { wch: 10 }, // PAID
+            { wch: 10 }, // O/S
+            { wch: 15 }  // REMARKS
         ];
 
         // Merge cells

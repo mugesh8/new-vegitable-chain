@@ -204,26 +204,43 @@ const ReportOrderView = () => {
             productsByDriver[driverName].totalBoxes += noOfPkgs;
         });
 
+        // Helper: get total tape quantity from airport group (supports single tape or tapes array)
+        const getTapeQtyFromAirportGroup = (ag) => {
+            if (Array.isArray(ag.tapes) && ag.tapes.length > 0) {
+                return ag.tapes.reduce((sum, t) => sum + (parseFloat(t.tapeQuantity || t.tapeQty || 0) || 0), 0);
+            }
+            return parseFloat(ag.tapeQuantity || ag.tapeQty || 0) || 0;
+        };
+        // Helper: get total tape quantity from airportTapeData (value can be array of tapes or single object)
+        const getTapeQtyFromTapeData = (tapeInfo) => {
+            if (Array.isArray(tapeInfo)) {
+                return tapeInfo.reduce((sum, t) => sum + (parseFloat(t.tapeQuantity || t.tapeQty || 0) || 0), 0);
+            }
+            if (tapeInfo && typeof tapeInfo === 'object') {
+                return parseFloat(tapeInfo.tapeQuantity || tapeInfo.tapeQty || 0) || 0;
+            }
+            return 0;
+        };
+
         // Attach tape quantity per driver based on airport groups (stage3_summary_data)
         Object.values(productsByDriver).forEach(driverData => {
             const airportName = driverData.airportName;
             let qty = 0;
 
-            // 1) Try to read from stage3_summary_data.airportGroups
+            // 1) Try to read from stage3_summary_data.airportGroups (supports multiple tapes per airport)
             if (summaryAirportGroups && typeof summaryAirportGroups === 'object') {
                 for (const ag of Object.values(summaryAirportGroups)) {
                     if (!ag) continue;
                     if ((ag.airportName || '').toLowerCase() === (airportName || '').toLowerCase()) {
-                        qty = parseFloat(ag.tapeQuantity || ag.tapeQty || 0) || 0;
+                        qty = getTapeQtyFromAirportGroup(ag);
                         break;
                     }
                 }
             }
 
-            // 2) Fallback to stage3_data.airportTapeData by airport name
+            // 2) Fallback to stage3_data.airportTapeData by airport name (can be array of tapes)
             if (!qty && airportTapeData && typeof airportTapeData === 'object') {
-                const tapeInfo = airportTapeData[airportName] || {};
-                qty = parseFloat(tapeInfo.tapeQuantity || 0) || 0;
+                qty = getTapeQtyFromTapeData(airportTapeData[airportName]);
             }
 
             driverData.tapeQuantity = qty;
@@ -1508,8 +1525,23 @@ const ReportOrderView = () => {
                                             const tapeUnitPrice = getStockPrice('tape') || 0;
                                             const tapeQuantity = (() => {
                                                 const airportName = data.airportName;
+                                                const getTapeQtyFromAg = (ag) => {
+                                                    if (Array.isArray(ag.tapes) && ag.tapes.length > 0) {
+                                                        return ag.tapes.reduce((sum, t) => sum + (parseFloat(t.tapeQuantity || t.tapeQty || 0) || 0), 0);
+                                                    }
+                                                    return parseFloat(ag.tapeQuantity || ag.tapeQty || 0) || 0;
+                                                };
+                                                const getTapeQtyFromTapeData = (info) => {
+                                                    if (Array.isArray(info)) {
+                                                        return info.reduce((sum, t) => sum + (parseFloat(t.tapeQuantity || t.tapeQty || 0) || 0), 0);
+                                                    }
+                                                    if (info && typeof info === 'object') {
+                                                        return parseFloat(info.tapeQuantity || info.tapeQty || 0) || 0;
+                                                    }
+                                                    return 0;
+                                                };
 
-                                                // 1) Try to read from stage3_summary_data.airportGroups
+                                                // 1) Try to read from stage3_summary_data.airportGroups (supports multiple tapes)
                                                 if (assignment.stage3_summary_data) {
                                                     try {
                                                         const s3Summary = typeof assignment.stage3_summary_data === 'string'
@@ -1519,7 +1551,7 @@ const ReportOrderView = () => {
                                                         for (const ag of Object.values(ags)) {
                                                             if (!ag) continue;
                                                             if ((ag.airportName || '').toLowerCase() === (airportName || '').toLowerCase()) {
-                                                                const q = parseFloat(ag.tapeQuantity || ag.tapeQty || 0) || 0;
+                                                                const q = getTapeQtyFromAg(ag);
                                                                 if (q) return q;
                                                             }
                                                         }
@@ -1528,9 +1560,8 @@ const ReportOrderView = () => {
                                                     }
                                                 }
 
-                                                // 2) Fallback to stage3_data.airportTapeData by airport name
-                                                const tapeInfo = (stage3Data.airportTapeData || {})[airportName] || {};
-                                                return parseFloat(tapeInfo.tapeQuantity || 0) || 0;
+                                                // 2) Fallback to stage3_data.airportTapeData by airport name (can be array of tapes)
+                                                return getTapeQtyFromTapeData((stage3Data.airportTapeData || {})[airportName]);
                                             })();
                                             const paperPrice = 0;
                                             const tapeCost = tapeUnitPrice * tapeQuantity + paperPrice;

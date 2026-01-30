@@ -1,8 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Calendar, ChevronDown } from 'lucide-react';
-import { getAllAttendance, markPresent, markCheckOut, markAbsent } from '../../../api/labourAttendanceApi';
+import { getAllAttendance, markPresent, markCheckOut, markAbsent, updateCheckInTime, updateCheckOutTime } from '../../../api/labourAttendanceApi';
 import { getAllLabours } from '../../../api/labourApi';
+
+// Get current time as HH:MM for input type="time"
+const getCurrentTimeHHMM = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+// Parse API time string to HH:MM for input (e.g. "09:30:00" or "09:30 AM" -> "09:30")
+const parseTimeToHHMM = (str) => {
+  if (!str || str === '--:-- --') return '';
+  const trimmed = String(str).trim();
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const m = match[2];
+    if (match[4]) {
+      if (match[4].toUpperCase() === 'PM' && h < 12) h += 12;
+      if (match[4].toUpperCase() === 'AM' && h === 12) h = 0;
+    }
+    return `${String(h).padStart(2, '0')}:${m}`;
+  }
+  if (/^\d{1,2}:\d{2}$/.test(trimmed)) return trimmed.length === 4 ? `0${trimmed}` : trimmed;
+  return '';
+};
 
 const LabourAttendance = () => {
   const navigate = useNavigate();
@@ -37,8 +60,8 @@ const LabourAttendance = () => {
         labourId: labour.labour_id,
         phone: labour.mobile_number,
         department: labour.department,
-        checkIn: labour.check_in_time || '--:-- --',
-        checkOut: labour.check_out_time || '--:-- --',
+        checkIn: parseTimeToHHMM(labour.check_in_time) || '',
+        checkOut: parseTimeToHHMM(labour.check_out_time) || '',
         status: labour.attendance_status,
         attendanceId: labour.attendance_id
       }));
@@ -64,16 +87,14 @@ const LabourAttendance = () => {
 
   const handleAction = async (action, labourId) => {
     try {
+      const labour = labours.find(l => l.id === labourId);
+      const timeForApi = (hhmm) => (hhmm && hhmm.includes(':')) ? `${hhmm}:00` : (hhmm || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       if (action === 'checkout') {
-        const currentTime = new Date().toLocaleTimeString('en-US', { 
-          hour12: false, 
-          hour: '2-digit', 
-          minute: '2-digit',
-          second: '2-digit'
-        });
-        await markCheckOut(labourId, { time: currentTime, date: selectedDate });
+        const time = labour?.checkOut ? timeForApi(labour.checkOut) : new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        await markCheckOut(labourId, { time, date: selectedDate });
       } else if (action === 'markPresent') {
-        await markPresent(labourId, { date: selectedDate });
+        const time = labour?.checkIn ? timeForApi(labour.checkIn) : getCurrentTimeHHMM() + ':00';
+        await markPresent(labourId, { date: selectedDate, time });
       } else if (action === 'markAbsent') {
         await markAbsent(labourId, { date: selectedDate });
       }
@@ -81,6 +102,56 @@ const LabourAttendance = () => {
     } catch (error) {
       console.error('Error marking attendance:', error);
       alert('Failed to mark attendance. Please try again.');
+    }
+  };
+
+  const updateLabourTime = (labourId, field, value) => {
+    setLabours(prev => prev.map(l => l.id === labourId ? { ...l, [field]: value } : l));
+  };
+  // (fixed: was returning `l` in else - correct as is)
+
+  const fillCurrentTime = (labourId, field) => {
+    setLabours(prev => prev.map(l => l.id === labourId ? { ...l, [field]: getCurrentTimeHHMM() } : l));
+  };
+
+  const timeForApi = (hhmm) => {
+    if (!hhmm || !String(hhmm).includes(':')) return null;
+    const parts = String(hhmm).trim().split(':');
+    const h = parts[0].padStart(2, '0');
+    const m = (parts[1] || '00').padStart(2, '0');
+    const s = (parts[2] || '00').padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
+
+  const handleSaveCheckIn = async (labourId) => {
+    const labour = labours.find(l => l.id === labourId);
+    const time = timeForApi(labour?.checkIn) || getCurrentTimeHHMM() + ':00';
+    try {
+      if (labour?.status !== 'Present' && !labour?.checkIn) {
+        await markPresent(labourId, { date: selectedDate, time });
+      } else {
+        await updateCheckInTime(labourId, { date: selectedDate, time });
+      }
+      await fetchData();
+    } catch (err) {
+      console.error('Error saving check-in time:', err);
+      alert('Failed to save check-in time. Please try again.');
+    }
+  };
+
+  const handleSaveCheckOut = async (labourId) => {
+    const labour = labours.find(l => l.id === labourId);
+    const time = timeForApi(labour?.checkOut) || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    try {
+      if (labour?.checkIn && !labour?.checkOut) {
+        await markCheckOut(labourId, { date: selectedDate, time });
+      } else if (labour?.checkOut) {
+        await updateCheckOutTime(labourId, { date: selectedDate, time });
+      }
+      await fetchData();
+    } catch (err) {
+      console.error('Error saving check-out time:', err);
+      alert('Failed to save check-out time. Please try again.');
     }
   };
 
@@ -254,14 +325,44 @@ const LabourAttendance = () => {
                   </td>
 
                   <td className="px-4 sm:px-6 py-4">
-                    <div className={`text-sm font-medium ${labour.checkIn === '--:-- --' ? 'text-[#6B8782]' : 'text-[#10B981]'}`}>
-                      {labour.checkIn}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={labour.checkIn || ''}
+                        onFocus={() => fillCurrentTime(labour.id, 'checkIn')}
+                        onChange={(e) => updateLabourTime(labour.id, 'checkIn', e.target.value)}
+                        className={`w-24 px-2 py-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0D7C66] ${labour.checkIn ? 'text-[#10B981] border-[#10B981]/50' : 'text-[#6B8782] border-[#D0E0DB]'}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveCheckIn(labour.id)}
+                        disabled={labour.status === 'Absent' || !!labour.checkOut}
+                        className={`px-2 py-1 rounded text-xs font-medium ${!(labour.status === 'Absent' || labour.checkOut) ? 'bg-[#0D7C66] text-white hover:bg-[#0a6354]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                        title="Save check-in time"
+                      >
+                        ✓
+                      </button>
                     </div>
                   </td>
 
                   <td className="px-4 sm:px-6 py-4">
-                    <div className={`text-sm font-medium ${labour.checkOut === '--:-- --' ? 'text-[#6B8782]' : 'text-red-500'}`}>
-                      {labour.checkOut}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={labour.checkOut || ''}
+                        onFocus={() => fillCurrentTime(labour.id, 'checkOut')}
+                        onChange={(e) => updateLabourTime(labour.id, 'checkOut', e.target.value)}
+                        className={`w-24 px-2 py-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0D7C66] ${labour.checkOut ? 'text-red-600 border-red-300' : 'text-[#6B8782] border-[#D0E0DB]'}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveCheckOut(labour.id)}
+                        disabled={!labour.checkIn}
+                        className={`px-2 py-1 rounded text-xs font-medium ${labour.checkIn ? 'bg-[#0D7C66] text-white hover:bg-[#0a6354]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                        title="Save check-out time"
+                      >
+                        ✓
+                      </button>
                     </div>
                   </td>
 
@@ -276,9 +377,9 @@ const LabourAttendance = () => {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleAction('markPresent', labour.id)}
-                        disabled={labour.status === 'Present' || labour.status === 'Absent' || labour.checkOut !== '--:-- --'}
+                        disabled={labour.status === 'Present' || labour.status === 'Absent' || !!labour.checkOut}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          labour.status === 'Present' || labour.status === 'Absent' || labour.checkOut !== '--:-- --'
+                          labour.status === 'Present' || labour.status === 'Absent' || !!labour.checkOut
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             : 'bg-[#10B981] hover:bg-[#059669] text-white'
                         }`}
@@ -287,9 +388,9 @@ const LabourAttendance = () => {
                       </button>
                       <button
                         onClick={() => handleAction('checkout', labour.id)}
-                        disabled={labour.checkIn === '--:-- --' || labour.checkOut !== '--:-- --'}
+                        disabled={!labour.checkIn || labour.checkOut}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          labour.checkIn === '--:-- --' || labour.checkOut !== '--:-- --'
+                          !labour.checkIn || labour.checkOut
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             : 'bg-red-500 hover:bg-red-600 text-white'
                         }`}
@@ -298,9 +399,9 @@ const LabourAttendance = () => {
                       </button>
                       <button
                         onClick={() => handleAction('markAbsent', labour.id)}
-                        disabled={labour.status === 'Absent' || labour.status === 'Present' || labour.checkOut !== '--:-- --'}
+                        disabled={labour.status === 'Absent' || labour.status === 'Present' || !!labour.checkOut}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          labour.status === 'Absent' || labour.status === 'Present' || labour.checkOut !== '--:-- --'
+                          labour.status === 'Absent' || labour.status === 'Present' || !!labour.checkOut
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             : 'bg-orange-500 hover:bg-orange-600 text-white'
                         }`}

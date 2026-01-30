@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import { createSupplier } from '../../../api/supplierApi';
 import { getAllProducts } from '../../../api/productApi';
+import { createNotification } from '../../../api/notificationApi';
 
 const AddSupplierForm = () => {
   const navigate = useNavigate();
@@ -139,6 +140,18 @@ const AddSupplierForm = () => {
 
       await createSupplier(supplierPayload);*/
       setSuccess(true);
+
+      try {
+        await createNotification({
+          title: 'New supplier added',
+          message: `Supplier ${formData.supplier_name || formData.supplierName} has been registered.`,
+          type: 'success',
+          category: 'Suppliers'
+        });
+      } catch (notifyErr) {
+        console.error('Failed to create supplier notification:', notifyErr);
+      }
+
       setTimeout(() => navigate('/suppliers'), 1500);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to create supplier');

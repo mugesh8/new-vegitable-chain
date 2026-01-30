@@ -288,28 +288,115 @@ const ReportThirdParty = () => {
         return thirdPartiesArray;
     }, [orderHistoryData, fromDate, toDate, searchTerm]);
 
-    // Export filtered data to Excel
+    // Export filtered data to Excel (summary + line items, same pattern as Supplier)
     const handleExportExcelSafe = () => {
         if (filteredData.length === 0) {
             alert('No data to export');
             return;
         }
 
-        const exportData = filteredData.map(tp => ({
-            'Third Party ID': tp.thirdPartyId,
-            'Third Party Name': tp.thirdPartyName,
-            'Phone': tp.thirdPartyPhone,
-            'Orders': tp.orderCount,
-            'Total Amount': parseFloat(tp.totalAmount).toFixed(2),
-            'Paid Amount': parseFloat(tp.paidAmount).toFixed(2),
-            'Pending Amount': parseFloat(tp.pendingAmount).toFixed(2)
-        }));
+        // Summary per third party, including list of all unique products
+        const exportData = filteredData.map(tp => {
+            const productSet = new Set();
+            orderHistoryData.forEach(({ thirdPartyData }) => {
+                const thirdPartyInfo = thirdPartyData.find(td => td.thirdPartyId == tp.thirdPartyId);
+                if (thirdPartyInfo && Array.isArray(thirdPartyInfo.assignments)) {
+                    thirdPartyInfo.assignments.forEach(a => {
+                        const name = cleanProductName(a.product);
+                        if (name) productSet.add(name);
+                    });
+                }
+            });
 
-        const worksheet = XLSX.utils.json_to_sheet(exportData);
-        // Auto-size
-        worksheet['!cols'] = [{ wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+            const products = Array.from(productSet).join(', ');
+
+            return {
+                'Third Party ID': tp.thirdPartyId,
+                'Third Party Name': tp.thirdPartyName,
+                'Phone': tp.thirdPartyPhone,
+                'Orders': tp.orderCount,
+                'Total Amount': parseFloat(tp.totalAmount).toFixed(2),
+                'Paid Amount': parseFloat(tp.paidAmount || 0).toFixed(2),
+                'Pending Amount': parseFloat(tp.pendingAmount || 0).toFixed(2),
+                'Products': products || 'N/A'
+            };
+        });
+
+        // Sheet 1: Third party summary
+        const summarySheet = XLSX.utils.json_to_sheet(exportData);
+        summarySheet['!cols'] = [
+            { wch: 12 }, // ID
+            { wch: 22 }, // Name
+            { wch: 15 }, // Phone
+            { wch: 10 }, // Orders
+            { wch: 15 }, // Total Amount
+            { wch: 15 }, // Paid Amount
+            { wch: 15 }, // Pending Amount
+            { wch: 30 }  // Products
+        ];
+
+        // Sheet 2: Line items with Order ID, Qty, Boxes, Price/Kg
+        const lineItems = [];
+        filteredData.forEach(tp => {
+            orderHistoryData.forEach(({ order, thirdPartyData }) => {
+                const thirdPartyInfo = thirdPartyData.find(td => td.thirdPartyId == tp.thirdPartyId);
+                if (thirdPartyInfo && Array.isArray(thirdPartyInfo.assignments)) {
+                    const orderDate = order.createdAt
+                        ? new Date(order.createdAt).toLocaleDateString('en-GB')
+                        : 'N/A';
+
+                    thirdPartyInfo.assignments.forEach(a => {
+                        const boxes = parseInt(a.assignedBoxes) || 0;
+                        const qty = parseFloat(a.assignedQty) || 0;
+                        const pricePerKg = parseFloat(a.price) || 0;
+                        const amount = qty * pricePerKg;
+                        const isPaid =
+                            order.payment_status === 'paid' ||
+                            order.payment_status === 'completed';
+                        const paid = isPaid ? amount : 0;
+                        const outstanding = isPaid ? 0 : amount;
+
+                        const productName = cleanProductName(a.product) || 'N/A';
+
+                        lineItems.push({
+                            'Third Party ID': tp.thirdPartyId,
+                            'Third Party Name': tp.thirdPartyName,
+                            'Order Date': orderDate,
+                            'Order ID': order.oid || order.order_id || '',
+                            'Product': productName,
+                            'Qty (KG)': qty,
+                            'Boxes': boxes,
+                            'Price/KG': pricePerKg,
+                            'Amount': amount,
+                            'Paid': paid,
+                            'O/S': outstanding
+                        });
+                    });
+                }
+            });
+        });
+
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Third Parties');
+        XLSX.utils.book_append_sheet(workbook, summarySheet, 'Third Parties');
+
+        if (lineItems.length > 0) {
+            const lineSheet = XLSX.utils.json_to_sheet(lineItems);
+            lineSheet['!cols'] = [
+                { wch: 12 }, // Third Party ID
+                { wch: 22 }, // Third Party Name
+                { wch: 12 }, // Order Date
+                { wch: 15 }, // Order ID
+                { wch: 25 }, // Product
+                { wch: 10 }, // Qty (KG)
+                { wch: 8 },  // Boxes
+                { wch: 10 }, // Price/KG
+                { wch: 12 }, // Amount
+                { wch: 10 }, // Paid
+                { wch: 10 }  // O/S
+            ];
+            XLSX.utils.book_append_sheet(workbook, lineSheet, 'Line Items');
+        }
+
         XLSX.writeFile(workbook, `Third_Parties_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
@@ -319,25 +406,61 @@ const ReportThirdParty = () => {
             return;
         }
 
-        const doc = new jsPDF();
+        const doc = new jsPDF('p', 'pt', 'a4');
         doc.setFontSize(16);
-        doc.text('Third Party Report', 105, 15, { align: 'center' });
+        doc.text('Third Party Orders Report', 300, 30, { align: 'center' });
 
-        const tableData = filteredData.map(tp => [
-            tp.thirdPartyId,
-            tp.thirdPartyName,
-            tp.thirdPartyPhone,
-            tp.orderCount,
-            tp.totalAmount.toFixed(2),
-            tp.pendingAmount > 0 ? 'Pending' : 'Paid'
-        ]);
+        // Build line-item data similar to Excel "Line Items" sheet
+        const lineItems = [];
+        filteredData.forEach(tp => {
+            orderHistoryData.forEach(({ order, thirdPartyData }) => {
+                const thirdPartyInfo = thirdPartyData.find(td => td.thirdPartyId == tp.thirdPartyId);
+                if (thirdPartyInfo && Array.isArray(thirdPartyInfo.assignments)) {
+                    const orderDate = order.createdAt
+                        ? new Date(order.createdAt).toLocaleDateString('en-GB')
+                        : 'N/A';
+
+                    thirdPartyInfo.assignments.forEach(a => {
+                        const boxes = parseInt(a.assignedBoxes) || 0;
+                        const qty = parseFloat(a.assignedQty) || 0;
+                        const pricePerKg = parseFloat(a.price) || 0;
+                        const amount = qty * pricePerKg;
+
+                        const productName = cleanProductName(a.product) || 'N/A';
+
+                        lineItems.push([
+                            tp.thirdPartyId,
+                            tp.thirdPartyName,
+                            orderDate,
+                            order.oid || order.order_id || '',
+                            productName,
+                            qty,
+                            boxes,
+                            pricePerKg,
+                            amount
+                        ]);
+                    });
+                }
+            });
+        });
 
         doc.autoTable({
-            startY: 25,
-            head: [['ID', 'Name', 'Phone', 'Orders', 'Amount', 'Status']],
-            body: tableData,
+            startY: 50,
+            head: [[
+                'Third Party ID',
+                'Third Party Name',
+                'Order Date',
+                'Order ID',
+                'Product',
+                'Qty (KG)',
+                'Boxes',
+                'Price/KG',
+                'Amount'
+            ]],
+            body: lineItems,
             theme: 'grid',
-            headStyles: { fillColor: [13, 92, 77] },
+            headStyles: { fillColor: [13, 92, 77], textColor: 255, halign: 'center' },
+            styles: { fontSize: 8 },
         });
 
         doc.save(`Third_Parties_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -387,8 +510,8 @@ const ReportThirdParty = () => {
         wsData.push(['#N/A']);
         wsData.push(['#N/A']);
 
-        // Table Header (Row 8)
-        wsData.push(['S.NO', 'DATE', 'PRODUCT', 'UNIT', 'KGS', 'PRICE', 'AMOUNT', 'PAID', 'O/S', 'REMARKS']);
+        // Table Header (Row 8) - include Order ID, Quantity (KG), Boxes, Price/KG
+        wsData.push(['S.NO', 'DATE', 'ORDER ID', 'PRODUCT', 'QTY (KG)', 'BOXES', 'PRICE/KG', 'AMOUNT', 'PAID', 'O/S', 'REMARKS']);
 
         // Data rows
         let serialNo = 1;
@@ -397,14 +520,12 @@ const ReportThirdParty = () => {
 
             thirdPartyInfo.assignments.forEach((assignment) => {
                 const boxes = parseInt(assignment.assignedBoxes) || 0;
-                const qty = parseFloat(assignment.assignedQty) || 0;
-                const displayQty = boxes > 0 ? boxes : qty;
-                const price = parseFloat(assignment.price) || 0;
-                const amount = displayQty * price;
+                const qty = parseFloat(assignment.assignedQty) || 0; // quantity in KG
+                const pricePerKg = parseFloat(assignment.price) || 0;
+                const amount = qty * pricePerKg;
                 const isPaid = order.payment_status === 'paid' || order.payment_status === 'completed';
                 const paid = isPaid ? amount : 0;
                 const outstanding = isPaid ? 0 : amount;
-                const unit = boxes > 0 ? `BOX ${boxes}` : 'STOCK';
 
                 // Clean product name - remove box/bag information
                 let productName = (assignment.product || 'N/A').toUpperCase();
@@ -413,10 +534,11 @@ const ReportThirdParty = () => {
                 wsData.push([
                     serialNo,
                     orderDate,
+                    order.oid || order.order_id || '',
                     productName,
-                    unit,
-                    displayQty,
-                    price || 0,
+                    qty || 0,
+                    boxes || 0,
+                    pricePerKg || 0,
                     amount || 0,
                     paid || 0,
                     outstanding || 0,
@@ -429,8 +551,17 @@ const ReportThirdParty = () => {
         // Create worksheet
         const worksheet = XLSX.utils.aoa_to_sheet(wsData);
         worksheet['!cols'] = [
-            { wch: 8 }, { wch: 12 }, { wch: 25 }, { wch: 10 }, { wch: 8 },
-            { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 }
+            { wch: 6 },  // S.NO
+            { wch: 12 }, // DATE
+            { wch: 14 }, // ORDER ID
+            { wch: 25 }, // PRODUCT
+            { wch: 10 }, // QTY (KG)
+            { wch: 8 },  // BOXES
+            { wch: 10 }, // PRICE/KG
+            { wch: 12 }, // AMOUNT
+            { wch: 10 }, // PAID
+            { wch: 10 }, // O/S
+            { wch: 15 }  // REMARKS
         ];
 
         // Merge cells

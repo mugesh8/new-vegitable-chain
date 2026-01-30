@@ -17,7 +17,7 @@ const DriverRateManagement = () => {
   const [loading, setLoading] = useState(false);
 
   const itemsPerPage = 7;
-  const [formData, setFormData] = useState({ deliveryType: 'LOCAL GRADE ORDER', amount: '', status: 'Active' });
+  const [formData, setFormData] = useState({ deliveryType: 'LOCAL GRADE ORDER', amount: '', kilometer: '', status: 'Active' });
 
   useEffect(() => {
     fetchDriverRates();
@@ -39,7 +39,7 @@ const DriverRateManagement = () => {
 
   const handleEdit = (rate) => {
     setSelectedRate(rate);
-    setFormData({ deliveryType: rate.deliveryType, amount: rate.amount, status: rate.status });
+    setFormData({ deliveryType: rate.deliveryType, amount: rate.amount, kilometers: rate.kilometers ?? '', status: rate.status });
     setIsEditModalOpen(true);
   };
 
@@ -65,7 +65,7 @@ const DriverRateManagement = () => {
       await createDriverRate(formData);
       await fetchDriverRates();
       setIsAddModalOpen(false);
-      setFormData({ deliveryType: 'LOCAL GRADE ORDER', amount: '', status: 'Active' });
+      setFormData({ deliveryType: 'LOCAL GRADE ORDER', amount: '', kilometers: '', status: 'Active' });
     } catch (error) {
       console.error('Error creating driver rate:', error);
       alert('Failed to create driver rate');
@@ -82,7 +82,7 @@ const DriverRateManagement = () => {
       await updateDriverRate(rateId, formData);
       await fetchDriverRates();
       setIsEditModalOpen(false);
-      setFormData({ deliveryType: 'LOCAL GRADE ORDER', amount: '', status: 'Active' });
+      setFormData({ deliveryType: 'LOCAL GRADE ORDER', amount: '', kilometers: '', status: 'Active' });
       setSelectedRate(null);
     } catch (error) {
       console.error('Error updating driver rate:', error);
@@ -136,6 +136,7 @@ const DriverRateManagement = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Delivery Type</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Amount (₹)</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Kilometer</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Action</th>
                 </tr>
@@ -145,6 +146,7 @@ const DriverRateManagement = () => {
                   <tr key={rate.drid || rate.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-900">{rate.deliveryType}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">₹{rate.amount}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{rate.kilometers ?? '—'}</td>
                     <td className="px-6 py-4 text-sm"><span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${rate.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-yellow-100 text-yellow-700'}`}>{rate.status}</span></td>
                     <td className="px-6 py-4 text-sm">
                       <div className="flex gap-2">
@@ -180,6 +182,10 @@ const DriverRateManagement = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
                 <input type="number" required value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Enter amount" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kilometer</label>
+                <input type="number" value={formData.kilometers} onChange={(e) => setFormData({ ...formData, kilometers: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Enter kilometers" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
@@ -226,6 +232,10 @@ const DriverRateManagement = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
                 <input type="number" required value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kilometer</label>
+                <input type="number" value={formData.kilometers} onChange={(e) => setFormData({ ...formData, kilometers: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Enter kilometers" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>

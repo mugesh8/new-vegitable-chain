@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Download, ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { getAllStock } from '../../../api/orderAssignmentApi';
@@ -11,6 +11,7 @@ import { getAllInventory } from '../../../api/inventoryApi';
 import { createInventoryStock, getAllInventoryStocks, updateInventoryStock, deleteInventoryStock } from '../../../api/inventoryStockApi';
 import { getAllCompanies } from '../../../api/inventoryCompanyApi';
 import { createSellStock, getAllSellStocks, deleteSellStock } from '../../../api/sellStockApi';
+import { createNotification, getNotifications } from '../../../api/notificationApi';
 import { BASE_URL } from '../../../config/config';
 
 const StockManagement = () => {
@@ -80,13 +81,156 @@ const StockManagement = () => {
     inventoryId: ''
   });
 
+  // Refs for keyboard navigation in Market Price Entry table
+  const marketPriceRefs = useRef({});
+
+  // Handle arrow key navigation between market price inputs
+  const handleMarketPriceKeyDown = (e, rowIndex, totalRows) => {
+    const arrowKeys = ['ArrowUp', 'ArrowDown'];
+    if (!arrowKeys.includes(e.key)) return;
+
+    e.preventDefault();
+
+    let nextRow = rowIndex;
+    if (e.key === 'ArrowDown') {
+      nextRow = Math.min(rowIndex + 1, totalRows - 1);
+    } else if (e.key === 'ArrowUp') {
+      nextRow = Math.max(rowIndex - 1, 0);
+    }
+
+    const nextKey = `${nextRow}`;
+    const nextInput = marketPriceRefs.current[nextKey];
+
+    if (nextInput) {
+      nextInput.focus();
+      if (nextInput.select) {
+        setTimeout(() => nextInput.select(), 0);
+      }
+    }
+  };
+
+  // Track which products have already triggered low stock alerts to avoid duplicates
+  // Use localStorage to persist across page refreshes
+  const getAlertedProducts = () => {
+    try {
+      const stored = localStorage.getItem('lowStockAlertedProducts');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  };
+
+  const saveAlertedProducts = (productsSet) => {
+    try {
+      localStorage.setItem('lowStockAlertedProducts', JSON.stringify(Array.from(productsSet)));
+    } catch (error) {
+      console.error('Error saving alerted products:', error);
+    }
+  };
+
+  // Function to check if a low stock notification already exists in backend
+  const hasExistingLowStockNotification = useCallback(async (productName) => {
+    try {
+      const res = await getNotifications();
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : res?.notifications || []);
+      
+      // Check if there's a recent low stock notification for this product (within last 24 hours)
+      const now = new Date();
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      
+      return list.some(notif => {
+        const notifDate = notif.createdAt ? new Date(notif.createdAt) : null;
+        const title = notif.title || '';
+        const isLowStockAlert = title.includes('Low Stock Alert:') && title.includes(productName);
+        const isRecent = notifDate && notifDate >= oneDayAgo;
+        return isLowStockAlert && isRecent;
+      });
+    } catch (error) {
+      console.error('Error checking existing notifications:', error);
+      return false;
+    }
+  }, []);
+
+  // Function to check for low stock and create notifications
+  const checkLowStock = useCallback(async (stockDataArray) => {
+    try {
+      // Aggregate stock quantities by product name
+      const productQuantities = {};
+      
+      stockDataArray.forEach(item => {
+        const productName = item.products || item.product_name || item.product || '';
+        if (!productName) return;
+        
+        const quantity = parseFloat(item.quantity) || 0;
+        if (productQuantities[productName]) {
+          productQuantities[productName] += quantity;
+        } else {
+          productQuantities[productName] = quantity;
+        }
+      });
+
+      // Check each product for low stock (< 300kg)
+      const lowStockThreshold = 300;
+      const currentAlertedProducts = new Set();
+      const alertedProducts = getAlertedProducts();
+
+      for (const [productName, totalQuantity] of Object.entries(productQuantities)) {
+        if (totalQuantity < lowStockThreshold && totalQuantity > 0) {
+          currentAlertedProducts.add(productName);
+          
+          // Check both localStorage and backend to avoid duplicates
+          const alreadyAlerted = alertedProducts.has(productName);
+          const hasExistingNotification = await hasExistingLowStockNotification(productName);
+          
+          // Only create notification if we haven't already alerted AND no recent notification exists
+          if (!alreadyAlerted && !hasExistingNotification) {
+            try {
+              await createNotification({
+                title: `Low Stock Alert: ${productName}`,
+                message: `Stock quantity is ${totalQuantity.toFixed(2)} kg (below ${lowStockThreshold} kg threshold)`,
+                type: 'warning',
+                category: 'Stock'
+              });
+              
+              // Mark as alerted in localStorage
+              alertedProducts.add(productName);
+              saveAlertedProducts(alertedProducts);
+              
+              // Trigger Navbar refresh
+              window.dispatchEvent(new CustomEvent('refreshNotifications'));
+            } catch (notifyErr) {
+              console.error('Failed to create low stock notification:', notifyErr);
+            }
+          }
+        } else if (totalQuantity >= lowStockThreshold) {
+          // If stock is back above threshold, remove from alerted set
+          alertedProducts.delete(productName);
+          saveAlertedProducts(alertedProducts);
+        }
+      }
+
+      // Remove products that are no longer in stock or no longer low
+      alertedProducts.forEach(productName => {
+        if (!currentAlertedProducts.has(productName)) {
+          alertedProducts.delete(productName);
+        }
+      });
+      saveAlertedProducts(alertedProducts);
+    } catch (error) {
+      console.error('Error checking low stock:', error);
+    }
+  }, [hasExistingLowStockNotification]);
+
   useEffect(() => {
     if (!dataFetched.stock) {
       const fetchStock = async () => {
         try {
           const response = await getAllStock();
           if (response.success) {
-            setStockData(response.data || []);
+            const stock = response.data || [];
+            setStockData(stock);
+            // Check for low stock after fetching
+            await checkLowStock(stock);
           }
         } catch (error) {
           console.error('Error fetching stock:', error.message);
@@ -97,7 +241,7 @@ const StockManagement = () => {
       };
       fetchStock();
     }
-  }, [dataFetched.stock]);
+  }, [dataFetched.stock, checkLowStock]);
 
   useEffect(() => {
     if (!dataFetched.products) {
@@ -350,6 +494,15 @@ const StockManagement = () => {
 
       await createSellStock(payload);
       fetchSellStocks();
+      
+      // Refresh stock data and check for low stock after selling
+      const stockResponse = await getAllStock();
+      if (stockResponse.success) {
+        const updatedStock = stockResponse.data || [];
+        setStockData(updatedStock);
+        await checkLowStock(updatedStock);
+      }
+      
       setShowSellForm(false);
       setSellForm({
         stockItem: '',
@@ -371,6 +524,14 @@ const StockManagement = () => {
       try {
         await deleteSellStock(id);
         fetchSellStocks();
+        
+        // Refresh stock data and check for low stock after deletion
+        const stockResponse = await getAllStock();
+        if (stockResponse.success) {
+          const updatedStock = stockResponse.data || [];
+          setStockData(updatedStock);
+          await checkLowStock(updatedStock);
+        }
       } catch (error) {
         console.error('Error deleting sell stock:', error);
         alert('Failed to delete sell stock');
@@ -428,6 +589,15 @@ const StockManagement = () => {
       }
       
       fetchInventoryStocks();
+      
+      // Refresh stock data and check for low stock after inventory update
+      const stockResponse = await getAllStock();
+      if (stockResponse.success) {
+        const updatedStock = stockResponse.data || [];
+        setStockData(updatedStock);
+        await checkLowStock(updatedStock);
+      }
+      
       setShowInventoryForm(false);
       setInventoryForm({
         invoiceNo: '',
@@ -465,11 +635,31 @@ const StockManagement = () => {
     setShowInventoryForm(true);
   };
 
+  // Periodic check for low stock (every 5 minutes) when stock data is available
+  // This is less frequent to avoid creating duplicate notifications
+  useEffect(() => {
+    if (stockData.length > 0 && dataFetched.stock) {
+      const interval = setInterval(() => {
+        checkLowStock(stockData);
+      }, 300000); // Check every 5 minutes (300000 ms)
+
+      return () => clearInterval(interval);
+    }
+  }, [stockData.length, dataFetched.stock, checkLowStock]);
+
   const handleDeleteInventory = async (id) => {
     if (window.confirm('Are you sure you want to delete this inventory record?')) {
       try {
         await deleteInventoryStock(id);
         fetchInventoryStocks();
+        
+        // Refresh stock data and check for low stock after deletion
+        const stockResponse = await getAllStock();
+        if (stockResponse.success) {
+          const updatedStock = stockResponse.data || [];
+          setStockData(updatedStock);
+          await checkLowStock(updatedStock);
+        }
       } catch (error) {
         console.error('Error deleting inventory stock:', error);
         alert('Failed to delete inventory stock');
@@ -780,8 +970,10 @@ const StockManagement = () => {
                       {editingPriceId === product.pid ? (
                         <div className="flex items-center gap-2">
                           <input
-                            type="number"
-                            step="0.01"
+                            ref={(el) => {
+                              if (el) marketPriceRefs.current[`${index}`] = el;
+                            }}
+                            type="text"
                             value={editingPrice}
                             onChange={(e) => setEditingPrice(e.target.value)}
                             className="w-24 px-2 py-1 border border-[#0D7C66] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] text-sm"
@@ -789,6 +981,9 @@ const StockManagement = () => {
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handlePriceSave(product.pid);
                               if (e.key === 'Escape') handlePriceCancel();
+                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                handleMarketPriceKeyDown(e, index, marketPaginatedProducts.length);
+                              }
                             }}
                           />
                           <button
@@ -806,11 +1001,18 @@ const StockManagement = () => {
                         </div>
                       ) : (
                         <input
-                          type="number"
-                          step="0.01"
+                          ref={(el) => {
+                            if (el) marketPriceRefs.current[`${index}`] = el;
+                          }}
+                          type="text"
                           value={product.current_price}
                           onClick={() => handlePriceEdit(product.pid, product.current_price)}
                           readOnly
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                              handleMarketPriceKeyDown(e, index, marketPaginatedProducts.length);
+                            }
+                          }}
                           className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm cursor-pointer hover:border-[#0D7C66] focus:outline-none"
                           title="Click to edit price"
                         />
@@ -1136,8 +1338,7 @@ const StockManagement = () => {
                 Price per Kg (₹)
               </label>
               <input
-                type="number"
-                step="0.01"
+                type="text"
                 value={sellForm.pricePerKg}
                 onChange={(e) => handleSellFormChange('pricePerKg', e.target.value)}
                 className="w-full px-4 py-3 bg-[#F0F4F3] border border-[#D0E0DB] rounded-xl text-[#0D5C4D] focus:outline-none focus:ring-2 focus:ring-[#0D8568]"
@@ -1152,8 +1353,7 @@ const StockManagement = () => {
                 Quantity (kg)
               </label>
               <input
-                type="number"
-                step="0.01"
+                type="text"
                 value={sellForm.quantity}
                 onChange={(e) => handleSellFormChange('quantity', e.target.value)}
                 className="w-full px-4 py-3 bg-[#F0F4F3] border border-[#D0E0DB] rounded-xl text-[#0D5C4D] focus:outline-none focus:ring-2 focus:ring-[#0D8568]"
@@ -1473,8 +1673,7 @@ const StockManagement = () => {
                   <div>
                     <label className="block text-sm font-semibold text-[#0D5C4D] mb-2">Quantity</label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
                       value={inventoryForm.quantity}
                       onChange={(e) => handleInventoryFormChange('quantity', e.target.value)}
                       className="w-full px-4 py-3 bg-[#F0F4F3] border border-[#D0E0DB] rounded-xl text-[#0D5C4D] focus:outline-none focus:ring-2 focus:ring-[#0D8568]"
@@ -1485,8 +1684,7 @@ const StockManagement = () => {
                   <div>
                     <label className="block text-sm font-semibold text-[#0D5C4D] mb-2">Price per Unit (₹)</label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
                       value={inventoryForm.pricePerUnit}
                       onChange={(e) => handleInventoryFormChange('pricePerUnit', e.target.value)}
                       className="w-full px-4 py-3 bg-[#F0F4F3] border border-[#D0E0DB] rounded-xl text-[#0D5C4D] focus:outline-none focus:ring-2 focus:ring-[#0D8568]"
@@ -1497,8 +1695,7 @@ const StockManagement = () => {
                   <div>
                     <label className="block text-sm font-semibold text-[#0D5C4D] mb-2">GST (%)</label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
                       value={inventoryForm.gst}
                       onChange={(e) => handleInventoryFormChange('gst', e.target.value)}
                       className="w-full px-4 py-3 bg-[#F0F4F3] border border-[#D0E0DB] rounded-xl text-[#0D5C4D] focus:outline-none focus:ring-2 focus:ring-[#0D8568]"

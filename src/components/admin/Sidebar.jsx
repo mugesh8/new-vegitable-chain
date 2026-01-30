@@ -19,7 +19,7 @@ import {
   Plus,
   Archive
 } from 'lucide-react';
-import logo from '../../assets/logo.jpg';
+import logo from '../../assets/logo.png';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();

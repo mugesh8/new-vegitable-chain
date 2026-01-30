@@ -1,8 +1,30 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Calendar, ChevronDown } from 'lucide-react';
-import { getAttendanceOverview, markCheckOut, markPresent, markAbsent } from '../../../api/driverAttendanceApi';
+import { getAttendanceOverview, markCheckOut, markPresent, markAbsent, updateCheckInTime, updateCheckOutTime } from '../../../api/driverAttendanceApi';
 import { BASE_URL } from '../../../config/config';
+
+const getCurrentTimeHHMM = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+const parseTimeToHHMM = (str) => {
+  if (!str || str === '--:-- --') return '';
+  const trimmed = String(str).trim();
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const m = match[2];
+    if (match[4]) {
+      if (match[4].toUpperCase() === 'PM' && h < 12) h += 12;
+      if (match[4].toUpperCase() === 'AM' && h === 12) h = 0;
+    }
+    return `${String(h).padStart(2, '0')}:${m}`;
+  }
+  if (/^\d{1,2}:\d{2}$/.test(trimmed)) return trimmed.length === 4 ? `0${trimmed}` : trimmed;
+  return '';
+};
 
 const DriveAttendance = () => {
   const navigate = useNavigate();
@@ -99,8 +121,8 @@ const DriveAttendance = () => {
           deliveryType: driver.delivery_type || 'N/A',
           deliveryTypeBg: driver.delivery_type === 'LOCAL GRADE ORDER' ? 'bg-blue-100' : driver.delivery_type === 'BOX ORDER' ? 'bg-orange-100' : 'bg-purple-100',
           deliveryTypeText: driver.delivery_type === 'LOCAL GRADE ORDER' ? 'text-blue-700' : driver.delivery_type === 'BOX ORDER' ? 'text-orange-700' : 'text-purple-700',
-          checkIn: driver.check_in_time || '--:-- --',
-          checkOut: driver.check_out_time || '--:-- --',
+          checkIn: parseTimeToHHMM(driver.check_in_time) || '',
+          checkOut: parseTimeToHHMM(driver.check_out_time) || '',
           status: driver.attendance_status || 'Not Marked',
           statusColor: driver.attendance_status === 'Present' ? 'bg-[#10B981]' : driver.attendance_status === 'Absent' ? 'bg-red-500' : 'bg-orange-500',
           action: driver.check_out_time ? 'completed' : driver.check_in_time ? 'checkout' : 'markPresent',
@@ -129,16 +151,14 @@ const DriveAttendance = () => {
 
   const handleAction = async (action, driverId) => {
     try {
+      const driver = drivers.find(d => d.id === driverId);
+      const timeForApi = (hhmm) => (hhmm && hhmm.includes(':')) ? `${hhmm}:00` : (hhmm || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       if (action === 'checkout') {
-        const currentTime = new Date().toLocaleTimeString('en-US', { 
-          hour12: false, 
-          hour: '2-digit', 
-          minute: '2-digit',
-          second: '2-digit'
-        });
-        await markCheckOut(driverId, { time: currentTime });
+        const time = driver?.checkOut ? timeForApi(driver.checkOut) : new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        await markCheckOut(driverId, { time });
       } else if (action === 'markPresent') {
-        await markPresent(driverId);
+        const time = driver?.checkIn ? timeForApi(driver.checkIn) : getCurrentTimeHHMM() + ':00';
+        await markPresent(driverId, { time });
       } else if (action === 'markAbsent') {
         await markAbsent(driverId);
       }
@@ -146,6 +166,56 @@ const DriveAttendance = () => {
     } catch (error) {
       console.error('Error marking attendance:', error);
       alert('Failed to mark attendance. Please try again.');
+    }
+  };
+
+  const updateDriverTime = (driverId, field, value) => {
+    setDrivers(prev => prev.map(d => d.id === driverId ? { ...d, [field]: value } : d));
+  };
+
+  const fillCurrentTime = (driverId, field) => {
+    setDrivers(prev => prev.map(d => d.id === driverId ? { ...d, [field]: getCurrentTimeHHMM() } : d));
+  };
+
+  const attendanceDate = new Date().toISOString().split('T')[0];
+  const timeForApi = (hhmm) => {
+    if (!hhmm || !String(hhmm).includes(':')) return null;
+    const parts = String(hhmm).trim().split(':');
+    const h = parts[0].padStart(2, '0');
+    const m = (parts[1] || '00').padStart(2, '0');
+    const s = (parts[2] || '00').padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
+
+  const handleSaveCheckIn = async (driverId) => {
+    const driver = drivers.find(d => d.id === driverId);
+    const time = timeForApi(driver?.checkIn) || getCurrentTimeHHMM() + ':00';
+    try {
+      if (driver?.status !== 'Present') {
+        await markPresent(driverId, { time });
+      } else {
+        await updateCheckInTime(driverId, { date: attendanceDate, time });
+      }
+      await fetchAttendanceData();
+    } catch (err) {
+      console.error('Error saving check-in time:', err);
+      alert('Failed to save check-in time. Please try again.');
+    }
+  };
+
+  const handleSaveCheckOut = async (driverId) => {
+    const driver = drivers.find(d => d.id === driverId);
+    const time = timeForApi(driver?.checkOut) || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    try {
+      if (driver?.checkIn && !driver?.checkOut) {
+        await markCheckOut(driverId, { time });
+      } else if (driver?.checkOut) {
+        await updateCheckOutTime(driverId, { date: attendanceDate, time });
+      }
+      await fetchAttendanceData();
+    } catch (err) {
+      console.error('Error saving check-out time:', err);
+      alert('Failed to save check-out time. Please try again.');
     }
   };
 
@@ -313,14 +383,44 @@ const DriveAttendance = () => {
                   </td>
 
                   <td className="px-4 sm:px-6 py-4">
-                    <div className={`text-sm font-medium ${driver.checkIn === '--:-- --' ? 'text-[#6B8782]' : 'text-[#10B981]'}`}>
-                      {driver.checkIn}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={driver.checkIn || ''}
+                        onFocus={() => fillCurrentTime(driver.id, 'checkIn')}
+                        onChange={(e) => updateDriverTime(driver.id, 'checkIn', e.target.value)}
+                        className={`w-24 px-2 py-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0D7C66] ${driver.checkIn ? 'text-[#10B981] border-[#10B981]/50' : 'text-[#6B8782] border-[#D0E0DB]'}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveCheckIn(driver.id)}
+                        disabled={driver.status === 'Absent' || !!driver.checkOut}
+                        className={`px-2 py-1 rounded text-xs font-medium ${!(driver.status === 'Absent' || driver.checkOut) ? 'bg-[#0D7C66] text-white hover:bg-[#0a6354]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                        title="Save check-in time"
+                      >
+                        ✓
+                      </button>
                     </div>
                   </td>
 
                   <td className="px-4 sm:px-6 py-4">
-                    <div className={`text-sm font-medium ${driver.checkOut === '--:-- --' ? 'text-[#6B8782]' : 'text-red-500'}`}>
-                      {driver.checkOut}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={driver.checkOut || ''}
+                        onFocus={() => fillCurrentTime(driver.id, 'checkOut')}
+                        onChange={(e) => updateDriverTime(driver.id, 'checkOut', e.target.value)}
+                        className={`w-24 px-2 py-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0D7C66] ${driver.checkOut ? 'text-red-600 border-red-300' : 'text-[#6B8782] border-[#D0E0DB]'}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveCheckOut(driver.id)}
+                        disabled={!driver.checkIn}
+                        className={`px-2 py-1 rounded text-xs font-medium ${driver.checkIn ? 'bg-[#0D7C66] text-white hover:bg-[#0a6354]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                        title="Save check-out time"
+                      >
+                        ✓
+                      </button>
                     </div>
                   </td>
 
@@ -335,9 +435,9 @@ const DriveAttendance = () => {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleAction('markPresent', driver.id)}
-                        disabled={driver.status === 'Present' || driver.status === 'Absent' || driver.checkOut !== '--:-- --'}
+                        disabled={driver.status === 'Present' || driver.status === 'Absent' || !!driver.checkOut}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          driver.status === 'Present' || driver.status === 'Absent' || driver.checkOut !== '--:-- --'
+                          driver.status === 'Present' || driver.status === 'Absent' || !!driver.checkOut
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             : 'bg-[#10B981] hover:bg-[#059669] text-white'
                         }`}
@@ -346,9 +446,9 @@ const DriveAttendance = () => {
                       </button>
                       <button
                         onClick={() => handleAction('checkout', driver.id)}
-                        disabled={!driver.checkIn || driver.checkIn === '--:-- --' || driver.checkOut !== '--:-- --'}
+                        disabled={!driver.checkIn || driver.checkOut}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          !driver.checkIn || driver.checkIn === '--:-- --' || driver.checkOut !== '--:-- --'
+                          !driver.checkIn || driver.checkOut
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             : 'bg-red-500 hover:bg-red-600 text-white'
                         }`}
@@ -357,9 +457,9 @@ const DriveAttendance = () => {
                       </button>
                       <button
                         onClick={() => handleAction('markAbsent', driver.id)}
-                        disabled={driver.status === 'Absent' || driver.isPresent || driver.checkOut !== '--:-- --'}
+                        disabled={driver.status === 'Absent' || driver.isPresent || !!driver.checkOut}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          driver.status === 'Absent' || driver.isPresent || driver.checkOut !== '--:-- --'
+                          driver.status === 'Absent' || driver.isPresent || !!driver.checkOut
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             : 'bg-orange-500 hover:bg-orange-600 text-white'
                         }`}

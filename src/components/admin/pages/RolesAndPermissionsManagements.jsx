@@ -3,7 +3,7 @@ import { Search, ChevronDown, ChevronLeft, ChevronRight, X, Info, Edit2, Trash2,
 import AddAdmin from './AddAdmin';
 import EditAdmin from './EditAdmin';
 import ConfirmDeleteModal from '../../common/ConfirmDeleteModal';
-import { getAllAdmins, deleteAdmin, updateRolesPermissions } from '../../../api/adminApi';
+import { getAllAdmins, deleteAdmin, updateRolesPermissions, getRolesPermissions } from '../../../api/adminApi';
 
 // ===== EDIT ROLES & PERMISSIONS MODAL COMPONENT =====
 const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma', userRole = 'Supervisor', userId }) => {
@@ -15,12 +15,7 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       name: 'Dashboard',
       description: 'View and manage dashboard analytics',
       enabled: false,
-      permissions: {
-        add: false,
-        view: false,
-        edit: false,
-        delete: false
-      }
+      permissions: {}
     },
     {
       id: 2,
@@ -42,6 +37,9 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       permissions: {
         add: false,
         view: false,
+        orderlist: false,
+        payout: false,
+        vegetableavailability: false,
         edit: false,
         delete: false
       }
@@ -55,7 +53,15 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
         add: false,
         view: false,
         edit: false,
-        delete: false
+        delete: false,
+        attendance: false,
+        startkm_endkm: false,
+        localgradeorder: false,
+        boxorder: false,
+        fuelexpense: false,
+        advancepay: false,
+        remarks: false,
+        dailypayout: false
       }
     },
     {
@@ -66,6 +72,8 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       permissions: {
         add: false,
         view: false,
+        orderlist: false,
+        payout: false,
         edit: false,
         delete: false
       }
@@ -78,6 +86,8 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       permissions: {
         add: false,
         view: false,
+        orderlist: false,
+        payout: false,
         edit: false,
         delete: false
       }
@@ -90,6 +100,9 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       permissions: {
         add: false,
         view: false,
+        attendance: false,
+        excesspay: false,
+        dailypayout: false,
         edit: false,
         delete: false
       }
@@ -102,6 +115,8 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       permissions: {
         add: false,
         view: false,
+        allcategory: false,
+        customerproductorder: false,
         edit: false,
         delete: false
       }
@@ -138,6 +153,9 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       permissions: {
         add: false,
         view: false,
+        marketpriceentry: false,
+        sellstock: false,
+        inventorystock: false,
         edit: false,
         delete: false
       }
@@ -148,75 +166,97 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
       description: 'Manage payment processing and disbursements',
       enabled: false,
       permissions: {
-        add: false,
-        view: false,
-        edit: false,
-        delete: false
+        farmerpayout: false,
+        supplierpayout: false,
+        thirdpartypayout: false,
+        driverpayout: false,
+        labourpayout: false
       }
     },
     {
       id: 13,
-      name: 'Reports',
-      description: 'Generate and view system reports',
-      enabled: false,
-      permissions: {
-        add: false,
-        view: false,
-        edit: false,
-        delete: false
-      }
-    },
-    {
-      id: 14,
-      name: 'Roles And Permission',
-      description: 'Manage user roles and access permissions',
-      enabled: false,
-      permissions: {
-        add: false,
-        view: false,
-        edit: false,
-        delete: false
-      }
-    },
-    {
-      id: 15,
       name: 'Notification',
       description: 'Manage system notifications and alerts',
       enabled: false,
-      permissions: {
-        add: false,
-        view: false,
-        edit: false,
-        delete: false
-      }
+      permissions: {}
     },
     {
-      id: 16,
+      id: 14,
       name: 'Settings',
       description: 'Configure system settings and preferences',
       enabled: false,
       permissions: {
-        add: false,
-        view: false,
-        edit: false,
-        delete: false
+        inventorymanagement: false,
+        inventorycompany: false,
+        airportlocation: false,
+        petroleummanagement: false,
+        labourrate: false,
+        driverrate: false,
+        customer: false
       }
     }
   ]);
+
+  // Load existing permissions when modal opens
+  useEffect(() => {
+    const loadPermissions = async () => {
+      if (isOpen && userId) {
+        try {
+          const response = await getRolesPermissions(userId);
+          const permissionsData = response.data || response;
+          
+          // Map database permissions back to module structure
+          setModules(prevModules => prevModules.map(module => {
+            const moduleName = module.name.toLowerCase().replace(/ /g, '_');
+            const enabled = permissionsData[`${moduleName}_enabled`] || false;
+            
+            if (!enabled) {
+              return module;
+            }
+            
+            // Map all permissions for this module
+            const modulePermissions = { ...module.permissions };
+            Object.keys(modulePermissions).forEach(permission => {
+              const dbFieldName = `${moduleName}_${permission}`;
+              if (permissionsData.hasOwnProperty(dbFieldName)) {
+                modulePermissions[permission] = permissionsData[dbFieldName] || false;
+              }
+            });
+            
+            return {
+              ...module,
+              enabled,
+              permissions: modulePermissions
+            };
+          }));
+        } catch (error) {
+          console.error('Failed to load permissions:', error);
+        }
+      }
+    };
+    
+    loadPermissions();
+  }, [isOpen, userId]);
 
   const toggleModule = (moduleId) => {
     setModules(modules.map(module => {
       if (module.id === moduleId) {
         const newEnabled = !module.enabled;
+        // Reset permissions to false when disabling, but preserve structure
+        if (!newEnabled) {
+          const resetPermissions = {};
+          Object.keys(module.permissions).forEach(key => {
+            resetPermissions[key] = false;
+          });
+          return {
+            ...module,
+            enabled: newEnabled,
+            permissions: resetPermissions
+          };
+        }
         return {
           ...module,
-          enabled: newEnabled,
-          permissions: newEnabled ? module.permissions : {
-            add: false,
-            view: false,
-            edit: false,
-            delete: false
-          }
+          enabled: newEnabled
         };
       }
       return module;
@@ -320,27 +360,78 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
               {/* Permissions */}
               {module.enabled && (
                 <div className="px-4 pb-4 pt-2 border-t border-gray-100">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {Object.entries(module.permissions).map(([permission, isEnabled]) => (
-                      <div key={permission} className="flex items-center gap-2">
-                        <button
-                          onClick={() => togglePermission(module.id, permission)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 flex-shrink-0 ${
-                            isEnabled ? 'bg-teal-600' : 'bg-gray-300'
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              isEnabled ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                        <span className="text-sm font-medium text-gray-700 capitalize">
-                          {permission}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {Object.keys(module.permissions).length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {Object.entries(module.permissions).map(([permission, isEnabled]) => {
+                        // Format permission label for better readability
+                        const formatPermissionLabel = (perm) => {
+                          // Handle special cases
+                          const specialCases = {
+                            'orderlist': 'Order List',
+                            'startkm_endkm': 'Start KM / End KM',
+                            'allcategory': 'All Category',
+                            'customerproductorder': 'Customer Product Order',
+                            'marketpriceentry': 'Market Price Entry',
+                            'sellstock': 'Sell Stock',
+                            'inventorystock': 'Inventory Stock',
+                            'farmerpayout': 'Farmer Payout',
+                            'supplierpayout': 'Supplier Payout',
+                            'thirdpartypayout': 'Third Party Payout',
+                            'driverpayout': 'Driver Payout',
+                            'labourpayout': 'Labour Payout',
+                            'inventorymanagement': 'Inventory Management',
+                            'inventorycompany': 'Inventory Company',
+                            'airportlocation': 'Airport Location',
+                            'petroleummanagement': 'Petroleum Management',
+                            'labourrate': 'Labour Rate',
+                            'driverrate': 'Driver Rate',
+                            'vegetableavailability': 'Vegetable Availability',
+                            'localgradeorder': 'Local Grade Order',
+                            'fuelexpense': 'Fuel Expense',
+                            'advancepay': 'Advance Pay',
+                            'dailypayout': 'Daily Payout',
+                            'excesspay': 'Excess Pay'
+                          };
+                          
+                          if (specialCases[perm]) {
+                            return specialCases[perm];
+                          }
+                          
+                          // Default formatting
+                          return perm
+                            .replace(/_/g, ' ')
+                            .replace(/([a-z])([A-Z])/g, '$1 $2')
+                            .split(' ')
+                            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                            .join(' ');
+                        };
+                        
+                        return (
+                          <div key={permission} className="flex items-center gap-2">
+                            <button
+                              onClick={() => togglePermission(module.id, permission)}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 flex-shrink-0 ${
+                                isEnabled ? 'bg-teal-600' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                  isEnabled ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                              />
+                            </button>
+                            <span className="text-sm font-medium text-gray-700">
+                              {formatPermissionLabel(permission)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 italic py-2">
+                      No additional permissions available for this module
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -371,16 +462,24 @@ const EditRolesPermissionsModal = ({ isOpen, onClose, userName = 'Priya Sharma',
                 setLoading(true);
                 try {
                   const permissionsData = {};
+                  
+                  // Helper function to convert module name to database field format
+                  const getModuleFieldName = (moduleName) => {
+                    return moduleName.toLowerCase().replace(/ /g, '_');
+                  };
+                  
                   modules.forEach(module => {
-                    const moduleName = module.name.toLowerCase().replace(/ /g, '_');
+                    const moduleName = getModuleFieldName(module.name);
                     permissionsData[`${moduleName}_enabled`] = module.enabled;
-                    if (module.enabled) {
-                      permissionsData[`${moduleName}_add`] = module.permissions.add;
-                      permissionsData[`${moduleName}_view`] = module.permissions.view;
-                      permissionsData[`${moduleName}_edit`] = module.permissions.edit;
-                      permissionsData[`${moduleName}_delete`] = module.permissions.delete;
+                    
+                    if (module.enabled && Object.keys(module.permissions).length > 0) {
+                      // Map each permission to its database field name
+                      Object.entries(module.permissions).forEach(([permission, value]) => {
+                        permissionsData[`${moduleName}_${permission}`] = value;
+                      });
                     }
                   });
+                  
                   await updateRolesPermissions(userId, permissionsData);
                   onClose();
                 } catch (error) {
@@ -634,9 +733,23 @@ const RolesPermissionSystem = () => {
     try {
       setLoading(true);
       const response = await getAllAdmins();
-      setUsers(response.data || []);
+      // Check if response has success flag and data
+      if (response.success === false) {
+        console.error('Server error:', response.message);
+        setUsers([]);
+        // Show user-friendly error message
+        alert(`Error: ${response.message || 'Server error occurred'}`);
+        return;
+      }
+      // Handle both { data: [...] } and direct array responses
+      setUsers(response.data || response || []);
     } catch (error) {
       console.error('Failed to fetch admins:', error);
+      setUsers([]);
+      // Show user-friendly error message
+      // Handle both string errors and object errors
+      const errorMessage = error.message || (typeof error === 'object' && error !== null && error.message) || 'Server error occurred';
+      alert(`Error: ${errorMessage}`);
     } finally {
       setLoading(false);
     }

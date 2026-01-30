@@ -1,6 +1,7 @@
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
+import RequirePermission from './components/admin/RequirePermission'
 import Login from './components/admin/auth/Login'
 import Signup from './components/admin/auth/Signup'
 import Dashboard from './components/admin/pages/Dashboard'
@@ -73,8 +74,6 @@ import ReportSupplier from './components/admin/pages/ReportSupplier'
 import ReportThirdParty from './components/admin/pages/ReportThirdParty'
 import ReportLabour from './components/admin/pages/ReportLabour'
 import ReportInvoice from './components/admin/pages/ReportInvoice'
-import ReportInvoiceCumPackingList from './components/admin/pages/ReportInvoiceCumPackingList'
-import InvoiceCumPackingListDetail from './components/admin/pages/InvoiceCumPackingListDetail'
 import ReportPayout from './components/admin/pages/ReportPayout'
 import ReportOrder from './components/admin/pages/ReportOrder'
 import ReportDriver from './components/admin/pages/ReportDriver'
@@ -118,115 +117,1279 @@ const App = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/dashboard" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
-        <Route path="/vendors" element={<ProtectedRoute><Layout><VendorManagement /></Layout></ProtectedRoute>} />
-        <Route path="/vendors/:id" element={<ProtectedRoute><Layout><VendorDetails /></Layout></ProtectedRoute>} />
-        <Route path="/vendors/add" element={<ProtectedRoute><Layout><AddVendorForm /></Layout></ProtectedRoute>} />
-        <Route path="/vendors/:id/edit" element={<ProtectedRoute><Layout><EditVendorDetails /></Layout></ProtectedRoute>} />
-        <Route path="/farmers" element={<ProtectedRoute><Layout><Farmers /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/add" element={<ProtectedRoute><Layout><AddFarmer /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/:id/edit" element={<ProtectedRoute><Layout><EditFarmer /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/:id" element={<ProtectedRoute><Layout><FarmerDetails /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/:id/orders" element={<ProtectedRoute><Layout><FarmerIndividualOrderHistory /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/:id/orders/:orderId" element={<ProtectedRoute><Layout><OrderView /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/:id/order-details" element={<ProtectedRoute><Layout><FarmerOrderDetails /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/:id/payout" element={<ProtectedRoute><Layout><FarmerPayout /></Layout></ProtectedRoute>} />
-        <Route path="/farmers/:id/vegetable-availability" element={<ProtectedRoute><Layout><VegetableAvailability /></Layout></ProtectedRoute>} />
-        <Route path="/suppliers" element={<ProtectedRoute><Layout><SupplierDashboard /></Layout></ProtectedRoute>} />
-        <Route path="/suppliers/add" element={<ProtectedRoute><Layout><AddSupplierForm /></Layout></ProtectedRoute>} />
-        <Route path="/suppliers/:id/edit" element={<ProtectedRoute><Layout><EditSupplier /></Layout></ProtectedRoute>} />
-        <Route path="/suppliers/:id" element={<ProtectedRoute><Layout><SupplierDetails /></Layout></ProtectedRoute>} />
-        <Route path="/suppliers/:id/orders" element={<ProtectedRoute><Layout><SupplierIndividualOrderHistory /></Layout></ProtectedRoute>} />
-        <Route path="/suppliers/:id/payout" element={<ProtectedRoute><Layout><SupplierPayout /></Layout></ProtectedRoute>} />
-        <Route path="/third-party" element={<ProtectedRoute><Layout><ThirdPartyManagement /></Layout></ProtectedRoute>} />
-        <Route path="/third-party/add" element={<ProtectedRoute><Layout><AddThirdParty /></Layout></ProtectedRoute>} />
-        <Route path="/third-party/:id/edit" element={<ProtectedRoute><Layout><EditThirdParty /></Layout></ProtectedRoute>} />
-        <Route path="/third-party/:id" element={<ProtectedRoute><Layout><ThirdPartyDetails /></Layout></ProtectedRoute>} />
-        <Route path="/third-party/:id/orders" element={<ProtectedRoute><Layout><ThirdPartyIndividualOrderHistory /></Layout></ProtectedRoute>} />
-        <Route path="/third-party/:id/payout" element={<ProtectedRoute><Layout><ThirdPartyPayout /></Layout></ProtectedRoute>} />
-        <Route path="/drivers" element={<ProtectedRoute><Layout><DriverManagement /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/add" element={<ProtectedRoute><Layout><AddDriver /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/edit" element={<ProtectedRoute><Layout><EditDriver /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id" element={<ProtectedRoute><Layout><DriverDetails /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/local-pickups" element={<ProtectedRoute><Layout><DriverLocalPickups /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/airport" element={<ProtectedRoute><Layout><DriverAirportDelivery /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/fuel-expenses" element={<ProtectedRoute><Layout><AddFuelExpenses /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/excess-km" element={<ProtectedRoute><Layout><AddExcessKM /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/advance-pay" element={<ProtectedRoute><Layout><AddAdvancePay /></Layout></ProtectedRoute>} />
-        <Route path="/fuel-expense-management" element={<ProtectedRoute><Layout><FuelExpenseManagement /></Layout></ProtectedRoute>} />
-        <Route path="/fuel-expenses/view/:id" element={<ProtectedRoute><Layout><ViewFuelExpense /></Layout></ProtectedRoute>} />
-        <Route path="/fuel-expenses/edit/:id" element={<ProtectedRoute><Layout><EditFuelExpense /></Layout></ProtectedRoute>} />
-        <Route path="/start-end-km-management" element={<ProtectedRoute><Layout><StartEndKMManagement /></Layout></ProtectedRoute>} />
-        <Route path="/advance-pay-management" element={<ProtectedRoute><Layout><AdvancePayManagement /></Layout></ProtectedRoute>} />
-        <Route path="/advance-pay/view/:id" element={<ProtectedRoute><Layout><ViewAdvancePay /></Layout></ProtectedRoute>} />
-        <Route path="/advance-pay/edit/:id" element={<ProtectedRoute><Layout><EditAdvancePay /></Layout></ProtectedRoute>} />
-        <Route path="/remarks-management" element={<ProtectedRoute><Layout><RemarksManagement /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/remarks" element={<ProtectedRoute><Layout><AddRemarks /></Layout></ProtectedRoute>} />
-        <Route path="/remarks/view/:id" element={<ProtectedRoute><Layout><ViewRemarks /></Layout></ProtectedRoute>} />
-        <Route path="/remarks/edit/:id" element={<ProtectedRoute><Layout><EditRemarks /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/:id/daily-payout" element={<ProtectedRoute><Layout><DailyPayout /></Layout></ProtectedRoute>} />
-        <Route path="/drivers/attendance" element={<ProtectedRoute><Layout><DriveAttendance /></Layout></ProtectedRoute>} />
-        <Route path="/labour" element={<ProtectedRoute><Layout><LabourManagement /></Layout></ProtectedRoute>} />
-        <Route path="/labour/add" element={<ProtectedRoute><Layout><LabourAdd /></Layout></ProtectedRoute>} />
-        <Route path="/labour/:id/edit" element={<ProtectedRoute><Layout><LabourEdit /></Layout></ProtectedRoute>} />
-        <Route path="/labour/attendance" element={<ProtectedRoute><Layout><LabourAttendance /></Layout></ProtectedRoute>} />
-        <Route path="/labour/excess-pay" element={<ProtectedRoute><Layout><LabourExcessPayManagement /></Layout></ProtectedRoute>} />
-        <Route path="/labour/excess-pay/add" element={<ProtectedRoute><Layout><AddLabourExcessPay /></Layout></ProtectedRoute>} />
-        <Route path="/labour/excess-pay/:id/edit" element={<ProtectedRoute><Layout><EditLabourExcessPay /></Layout></ProtectedRoute>} />
-        <Route path="/labour/:id" element={<ProtectedRoute><Layout><LabourDetails /></Layout></ProtectedRoute>} />
-        <Route path="/labour/:id/daily-works" element={<ProtectedRoute><Layout><LabourDailyWorks /></Layout></ProtectedRoute>} />
-        <Route path="/labour/daily-payout" element={<ProtectedRoute><Layout><LabourDailyPayout /></Layout></ProtectedRoute>} />
-        <Route path="/products/add" element={<ProtectedRoute><Layout><AddProduct /></Layout></ProtectedRoute>} />
-        <Route path="/orders" element={<ProtectedRoute><Layout><OrderManagementList /></Layout></ProtectedRoute>} />
-        <Route path="/orders/create" element={<ProtectedRoute><Layout><OrderCreate /></Layout></ProtectedRoute>} />
-        <Route path="/orders/:id" element={<ProtectedRoute><Layout><OrderView /></Layout></ProtectedRoute>} />
-        <Route path="/preorders/:id" element={<ProtectedRoute><Layout><PreOrder /></Layout></ProtectedRoute>} />
-        <Route path="/drafts/:id" element={<ProtectedRoute><Layout><OrderView /></Layout></ProtectedRoute>} />
-        <Route path="/order-assign" element={<ProtectedRoute><Layout><OrderAssignManagement /></Layout></ProtectedRoute>} />
-        <Route path="/order-assign/stage1/:id" element={<ProtectedRoute><Layout><OrderAssignCreateStage1 /></Layout></ProtectedRoute>} />
-        <Route path="/order-assign/stage2/:id" element={<ProtectedRoute><Layout><OrderAssignCreateStage2 /></Layout></ProtectedRoute>} />
-        <Route path="/order-assign/stage3/:id" element={<ProtectedRoute><Layout><OrderAssignCreateStage3 /></Layout></ProtectedRoute>} />
-        <Route path="/order-assign/stage4/:id" element={<ProtectedRoute><Layout><OrderAssignCreateStage4 /></Layout></ProtectedRoute>} />
-        <Route path="/order-assign/edit/:id" element={<ProtectedRoute><Layout><OrderAssignEdit /></Layout></ProtectedRoute>} />
-        <Route path="/order-assign/local/:id" element={<ProtectedRoute><Layout><LocalOrderAssign /></Layout></ProtectedRoute>} />
-        <Route path="/stock" element={<ProtectedRoute><Layout><StockManagement /></Layout></ProtectedRoute>} />
-        <Route path="/stock/:id" element={<ProtectedRoute><Layout><StockReassignmentForm /></Layout></ProtectedRoute>} />
-        <Route path="/payouts" element={<ProtectedRoute><Layout><PayoutManagement /></Layout></ProtectedRoute>} />
-        <Route path="/payout-supplier" element={<ProtectedRoute><Layout><PayoutSupplier /></Layout></ProtectedRoute>} />
-        <Route path="/payout-thirdparty" element={<ProtectedRoute><Layout><PayoutThirdParty /></Layout></ProtectedRoute>} />
-        <Route path="/payout-labour" element={<ProtectedRoute><Layout><PayoutLabour /></Layout></ProtectedRoute>} />
-        <Route path="/payout-driver" element={<ProtectedRoute><Layout><PayoutDriver /></Layout></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute><Layout><ReportManagement /></Layout></ProtectedRoute>} />
-        <Route path="/reports/farmer" element={<ProtectedRoute><Layout><ReportFarmer /></Layout></ProtectedRoute>} />
-        <Route path="/reports/supplier" element={<ProtectedRoute><Layout><ReportSupplier /></Layout></ProtectedRoute>} />
-        <Route path="/reports/third-party" element={<ProtectedRoute><Layout><ReportThirdParty /></Layout></ProtectedRoute>} />
-               <Route path="/reports/labour" element={<ProtectedRoute><Layout><ReportLabour /></Layout></ProtectedRoute>} />
-               <Route path="/reports/invoice" element={<ProtectedRoute><Layout><ReportInvoice /></Layout></ProtectedRoute>} />
-               <Route path="/reports/invoice-cum-packing-list" element={<ProtectedRoute><Layout><ReportInvoiceCumPackingList /></Layout></ProtectedRoute>} />
-               <Route path="/reports/invoice-cum-packing-list/:orderId" element={<ProtectedRoute><Layout><InvoiceCumPackingListDetail /></Layout></ProtectedRoute>} />
-               <Route path="/reports/payout" element={<ProtectedRoute><Layout><ReportPayout /></Layout></ProtectedRoute>} />
-               <Route path="/reports/order" element={<ProtectedRoute><Layout><ReportOrder /></Layout></ProtectedRoute>} />
-               <Route path="/reports/driver" element={<ProtectedRoute><Layout><ReportDriver /></Layout></ProtectedRoute>} />
-               <Route path="/reports/driver/:driverId" element={<ProtectedRoute><Layout><ReportDriverView /></Layout></ProtectedRoute>} />
-        <Route path="/admin/report-order/:orderId" element={<ProtectedRoute><Layout><ReportOrderView /></Layout></ProtectedRoute>} />
-        <Route path="/admin/report-farmer/:farmerId" element={<ProtectedRoute><Layout><ReportFarmerView /></Layout></ProtectedRoute>} />
-        <Route path="/admin/report-farmer/:farmerId/order/:orderId" element={<ProtectedRoute><Layout><ReportFarmerOrderView /></Layout></ProtectedRoute>} />
-        <Route path="/admin/report-supplier/:supplierId" element={<ProtectedRoute><Layout><ReportSupplierView /></Layout></ProtectedRoute>} />
-        <Route path="/admin/report-supplier/:supplierId/order/:orderId" element={<ProtectedRoute><Layout><ReportSupplierOrderView /></Layout></ProtectedRoute>} />
-        <Route path="/admin/report-third-party/:thirdPartyId" element={<ProtectedRoute><Layout><ReportThirdPartyView /></Layout></ProtectedRoute>} />
-        <Route path="/admin/report-third-party/:thirdPartyId/order/:orderId" element={<ProtectedRoute><Layout><ReportThirdPartyOrderView /></Layout></ProtectedRoute>} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Dashboard">
+                  <Dashboard />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/vendors"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Vendors" action="view">
+                  <VendorManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/vendors/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Vendors" action="view">
+                  <VendorDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/vendors/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Vendors" action="add">
+                  <AddVendorForm />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/vendors/:id/edit"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Vendors" action="edit">
+                  <EditVendorDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="view">
+                  <Farmers />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="add">
+                  <AddFarmer />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/:id/edit"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="edit">
+                  <EditFarmer />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="view">
+                  <FarmerDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/:id/orders"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="orderlist">
+                  <FarmerIndividualOrderHistory />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/:id/orders/:orderId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="orderlist">
+                  <OrderView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/:id/order-details"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="orderlist">
+                  <FarmerOrderDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/:id/payout"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="payout">
+                  <FarmerPayout />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/farmers/:id/vegetable-availability"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Farmers" action="vegetableavailability">
+                  <VegetableAvailability />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suppliers"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Suppliers" action="view">
+                  <SupplierDashboard />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suppliers/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Suppliers" action="add">
+                  <AddSupplierForm />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suppliers/:id/edit"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Suppliers" action="edit">
+                  <EditSupplier />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suppliers/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Suppliers" action="view">
+                  <SupplierDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suppliers/:id/orders"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Suppliers" action="orderlist">
+                  <SupplierIndividualOrderHistory />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suppliers/:id/payout"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Suppliers" action="payout">
+                  <SupplierPayout />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/third-party"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Third Party" action="view">
+                  <ThirdPartyManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/third-party/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Third Party" action="add">
+                  <AddThirdParty />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/third-party/:id/edit"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Third Party" action="edit">
+                  <EditThirdParty />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/third-party/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Third Party" action="view">
+                  <ThirdPartyDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/third-party/:id/orders"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Third Party" action="orderlist">
+                  <ThirdPartyIndividualOrderHistory />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/third-party/:id/payout"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Third Party" action="payout">
+                  <ThirdPartyPayout />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="view">
+                  <DriverManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="add">
+                  <AddDriver />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/edit"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="edit">
+                  <EditDriver />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="view">
+                  <DriverDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/local-pickups"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="localgradeorder">
+                  <DriverLocalPickups />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/airport"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="boxorder">
+                  <DriverAirportDelivery />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/fuel-expenses"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="fuelexpense">
+                  <AddFuelExpenses />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/excess-km"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers">
+                  <AddExcessKM />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/advance-pay"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="advancepay">
+                  <AddAdvancePay />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/fuel-expense-management"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="fuelexpense">
+                  <FuelExpenseManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/fuel-expenses/view/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="fuelexpense">
+                  <ViewFuelExpense />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/fuel-expenses/edit/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="fuelexpense">
+                  <EditFuelExpense />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/start-end-km-management"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="startkm_endkm">
+                  <StartEndKMManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/advance-pay-management"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="advancepay">
+                  <AdvancePayManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/advance-pay/view/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="advancepay">
+                  <ViewAdvancePay />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/advance-pay/edit/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="advancepay">
+                  <EditAdvancePay />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/remarks-management"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="remarks">
+                  <RemarksManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/remarks"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="remarks">
+                  <AddRemarks />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/remarks/view/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="remarks">
+                  <ViewRemarks />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/remarks/edit/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="remarks">
+                  <EditRemarks />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/:id/daily-payout"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="dailypayout">
+                  <DailyPayout />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drivers/attendance"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Drivers" action="attendance">
+                  <DriveAttendance />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="view">
+                  <LabourManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="add">
+                  <LabourAdd />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/:id/edit"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="edit">
+                  <LabourEdit />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/attendance"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="attendance">
+                  <LabourAttendance />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/excess-pay"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="excesspay">
+                  <LabourExcessPayManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/excess-pay/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="excesspay">
+                  <AddLabourExcessPay />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/excess-pay/:id/edit"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="excesspay">
+                  <EditLabourExcessPay />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="view">
+                  <LabourDetails />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/:id/daily-works"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="attendance">
+                  <LabourDailyWorks />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/labour/:id/daily-payout"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Labour" action="dailypayout">
+                  <LabourDailyPayout />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/products/add"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Add Product" action="add">
+                  <AddProduct />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Orders" action="view">
+                  <OrderManagementList />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders/create"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Orders" action="add">
+                  <OrderCreate />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Orders" action="view">
+                  <OrderView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/preorders/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Orders" action="view">
+                  <PreOrder />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drafts/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Orders" action="view">
+                  <OrderView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-assign"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Order Assign" action="view">
+                  <OrderAssignManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-assign/stage1/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Order Assign" action="add">
+                  <OrderAssignCreateStage1 />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-assign/stage2/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Order Assign" action="add">
+                  <OrderAssignCreateStage2 />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-assign/stage3/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Order Assign" action="add">
+                  <OrderAssignCreateStage3 />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-assign/stage4/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Order Assign" action="add">
+                  <OrderAssignCreateStage4 />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-assign/edit/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Order Assign" action="edit">
+                  <OrderAssignEdit />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-assign/local/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Order Assign" action="edit">
+                  <LocalOrderAssign />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/stock"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Stock Management" action="view">
+                  <StockManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/stock/:id"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Stock Management" action="edit">
+                  <StockReassignmentForm />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payouts"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Payouts">
+                  <PayoutManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payout-supplier"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Payouts" action="supplierpayout">
+                  <PayoutSupplier />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payout-thirdparty"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Payouts" action="thirdpartypayout">
+                  <PayoutThirdParty />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payout-labour"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Payouts" action="labourpayout">
+                  <PayoutLabour />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payout-driver"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Payouts" action="driverpayout">
+                  <PayoutDriver />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports">
+                  <ReportManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/farmer"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="farmerreports">
+                  <ReportFarmer />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/supplier"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="supplierreports">
+                  <ReportSupplier />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/third-party"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="thirdpartyreports">
+                  <ReportThirdParty />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/labour"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="labourreports">
+                  <ReportLabour />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/invoice"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="invoicereports">
+                  <ReportInvoice />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/payout"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="payoutreports">
+                  <ReportPayout />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/order"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="orderreports">
+                  <ReportOrder />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/driver"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="driverreports">
+                  <ReportDriver />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/driver/:driverId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="driverreports">
+                  <ReportDriverView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/report-order/:orderId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="orderreports">
+                  <ReportOrderView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/report-farmer/:farmerId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="farmerreports">
+                  <ReportFarmerView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/report-farmer/:farmerId/order/:orderId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="farmerreports">
+                  <ReportFarmerOrderView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/report-supplier/:supplierId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="supplierreports">
+                  <ReportSupplierView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/report-supplier/:supplierId/order/:orderId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="supplierreports">
+                  <ReportSupplierOrderView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/report-third-party/:thirdPartyId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="thirdpartyreports">
+                  <ReportThirdPartyView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/report-third-party/:thirdPartyId/order/:orderId"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Reports" action="thirdpartyreports">
+                  <ReportThirdPartyOrderView />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
         <Route path="/roles" element={<ProtectedRoute><Layout><RolesPermissionSystem /></Layout></ProtectedRoute>} />
-        <Route path="/notifications" element={<ProtectedRoute><Layout><Notifications /></Layout></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><Layout><PackingInventory /></Layout></ProtectedRoute>} />
-        <Route path="/settings/inventory-company" element={<ProtectedRoute><Layout><InventoryCompany /></Layout></ProtectedRoute>} />
-        <Route path="/settings/createinventory" element={<ProtectedRoute><Layout><AddInventory /></Layout></ProtectedRoute>} />
-        <Route path="/settings/editinventory" element={<ProtectedRoute><Layout><EditInventory /></Layout></ProtectedRoute>} />
-        <Route path="/settings/airport" element={<ProtectedRoute><Layout><Airport /></Layout></ProtectedRoute>} />
-        <Route path="/settings/payout-formulas" element={<ProtectedRoute><Layout><PayoutFormulas /></Layout></ProtectedRoute>} />
-        <Route path="/settings/petroleum" element={<ProtectedRoute><Layout><PetrolBunkManagement /></Layout></ProtectedRoute>} />
-        <Route path="/settings/labour-rate" element={<ProtectedRoute><Layout><LabourRateManagement /></Layout></ProtectedRoute>} />
-        <Route path="/settings/driver-rate" element={<ProtectedRoute><Layout><DriverRateManagement /></Layout></ProtectedRoute>} />
-        <Route path="/settings/customers" element={<ProtectedRoute><Layout><AddCustomers /></Layout></ProtectedRoute>} />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Notification">
+                  <Notifications />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="inventorymanagement">
+                  <PackingInventory />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/inventory-company"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="inventorycompany">
+                  <InventoryCompany />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/createinventory"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="inventorymanagement">
+                  <AddInventory />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/editinventory"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="inventorymanagement">
+                  <EditInventory />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/airport"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="airportlocation">
+                  <Airport />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/payout-formulas"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings">
+                  <PayoutFormulas />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/petroleum"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="petroleummanagement">
+                  <PetrolBunkManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/labour-rate"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="labourrate">
+                  <LabourRateManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/driver-rate"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="driverrate">
+                  <DriverRateManagement />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/customers"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RequirePermission module="Settings" action="customer">
+                  <AddCustomers />
+                </RequirePermission>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
         <Route path="/" element={localStorage.getItem('authToken') ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} />
       </Routes>
     </Router>

@@ -7,6 +7,7 @@ import { getAllProducts } from '../../../api/productApi';
 import { getBoxesAndBags } from '../../../api/inventoryApi';
 import { getAllCustomers, getCustomersByCategory } from '../../../api/customerApi';
 import { getPreferencesByCustomer } from '../../../api/customerProductPreferenceApi';
+import { createNotification } from '../../../api/notificationApi';
 
 const NewOrder = () => {
   const navigate = useNavigate();
@@ -54,6 +55,9 @@ const NewOrder = () => {
   const [orderId, setOrderId] = useState(null);
   const [draggedIndex, setDraggedIndex] = useState(null);
   const prevOrderTypeRef = useRef(formData.orderType);
+  
+  // Refs for keyboard navigation
+  const inputGridRefs = useRef({});
 
   const toggleMoreDetails = (id) => {
     setProducts(prev =>
@@ -63,6 +67,58 @@ const NewOrder = () => {
           : product
       )
     );
+  };
+
+  // Handle arrow key navigation between inputs
+  const handleKeyDown = (e, rowIndex, colIndex) => {
+    const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!arrowKeys.includes(e.key)) return;
+
+    e.preventDefault();
+    
+    const isLocal = formData.orderType === 'local';
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+    
+    // Determine column count and mapping based on order type
+    // For non-local: 0=Product, 1=Packing, 2=Boxes, 3=Box Weight, 4=Net Weight, 5=Gross Weight
+    // For local: 0=Product, 1=Net Weight
+    const columnCount = isLocal ? 2 : 6;
+    
+    switch (e.key) {
+      case 'ArrowRight':
+        nextCol = colIndex + 1;
+        if (nextCol >= columnCount) {
+          nextCol = 0;
+          nextRow = Math.min(nextRow + 1, products.length - 1);
+        }
+        break;
+      case 'ArrowLeft':
+        nextCol = colIndex - 1;
+        if (nextCol < 0) {
+          nextCol = columnCount - 1;
+          nextRow = Math.max(nextRow - 1, 0);
+        }
+        break;
+      case 'ArrowDown':
+        nextRow = Math.min(nextRow + 1, products.length - 1);
+        break;
+      case 'ArrowUp':
+        nextRow = Math.max(nextRow - 1, 0);
+        break;
+    }
+    
+    // Get the next input element
+    const nextInputKey = `${nextRow}-${nextCol}`;
+    const nextInput = inputGridRefs.current[nextInputKey];
+    
+    if (nextInput) {
+      nextInput.focus();
+      // Select all text for easy editing (only for input elements, not selects)
+      if (nextInput.select && nextInput.tagName === 'INPUT') {
+        setTimeout(() => nextInput.select(), 0);
+      }
+    }
   };
 
   // Helper function to format number of boxes/bags for API
@@ -903,6 +959,27 @@ const NewOrder = () => {
           }
         }
 
+        // Create notification for new order (only when creating, not updating)
+        if (!orderId && response.data) {
+          try {
+            const orderIdFromResponse = response.data.oid || response.data.order_id || response.data.id;
+            await createNotification({
+              title: `New order ${orderIdFromResponse ? `#${orderIdFromResponse}` : ''} created`,
+              message: `Customer: ${formData.customerName || 'N/A'}`,
+              type: 'info',
+              category: 'Orders',
+              isRead: false  // Explicitly set as unread
+            });
+            
+            // Refresh notifications in Navbar after a short delay to ensure backend has processed it
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('refreshNotifications'));
+            }, 1000);
+          } catch (notifyErr) {
+            console.error('Failed to create order notification:', notifyErr);
+          }
+        }
+
         setFormData({
           customerName: "",
           customerId: "",
@@ -1117,8 +1194,8 @@ const NewOrder = () => {
                 </p>
               </div>
 
-              {/* Total No. of Boxes - Show for flight orders OR local grade with more details */}
-              {(formData.orderType === 'flight' || products.some(p => p.showMoreDetails)) && (
+              {/* Total No. of Boxes - Show for flight orders */}
+              {formData.orderType === 'flight' && (
                 <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
                   <p className="text-xs font-semibold text-gray-600 uppercase mb-1">Total No. of Boxes</p>
                   <p className="text-2xl font-bold text-green-700">
@@ -1127,8 +1204,8 @@ const NewOrder = () => {
                 </div>
               )}
 
-              {/* Total Gross Weight - Show for flight orders OR local grade with more details */}
-              {(formData.orderType === 'flight' || products.some(p => p.showMoreDetails)) && (
+              {/* Total Gross Weight - Show for flight orders */}
+              {formData.orderType === 'flight' && (
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
                   <p className="text-xs font-semibold text-gray-600 uppercase mb-1">Total Gross Weight</p>
                   <p className="text-2xl font-bold text-purple-700">
@@ -1167,11 +1244,6 @@ const NewOrder = () => {
                         Gross Weight (kg)
                       </th>
                     )}
-                    {formData.orderType === 'local' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        More Details
-                      </th>
-                    )}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Action
                     </th>
@@ -1191,10 +1263,16 @@ const NewOrder = () => {
                           <div className="flex items-center gap-2">
                             <GripVertical className="w-5 h-5 text-gray-400 cursor-move" />
                             <input
-                              ref={(el) => (inputRefs.current[product.id] = el)}
+                              ref={(el) => {
+                                if (el) {
+                                  inputRefs.current[product.id] = el;
+                                  inputGridRefs.current[`${index}-0`] = el;
+                                }
+                              }}
                               type="text"
                               value={product.productName}
                               onChange={(e) => handleProductChange(product.id, 'productName', e.target.value)}
+                              onKeyDown={(e) => handleKeyDown(e, index, 0)}
                               placeholder="Type product name"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
                             />
@@ -1237,8 +1315,12 @@ const NewOrder = () => {
                         {formData.orderType !== 'local' && (
                           <td className="px-4 py-3">
                             <select
+                              ref={(el) => {
+                                if (el) inputGridRefs.current[`${index}-1`] = el;
+                              }}
                               value={product.packingType}
                               onChange={(e) => handleProductChange(product.id, 'packingType', e.target.value)}
+                              onKeyDown={(e) => handleKeyDown(e, index, 1)}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
                             >
                               <option value="">Select packing</option>
@@ -1261,22 +1343,28 @@ const NewOrder = () => {
                           <>
                             <td className="px-4 py-3">
                               <input
-                                type="number"
-                                step="0.01"
+                                ref={(el) => {
+                                  if (el) inputGridRefs.current[`${index}-2`] = el;
+                                }}
+                                type="text"
                                 value={product.numBoxes}
                                 onChange={(e) => handleProductChange(product.id, 'numBoxes', e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, index, 2)}
                                 placeholder="0"
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
                               />
                             </td>
                             <td className="px-4 py-3">
                               <input
-                                type="number"
-                                step="0.01"
+                                ref={(el) => {
+                                  if (el) inputGridRefs.current[`${index}-3`] = el;
+                                }}
+                                type="text"
                                 value={product.boxWeight}
                                 onChange={(e) =>
                                   handleProductChange(product.id, 'boxWeight', e.target.value)
                                 }
+                                onKeyDown={(e) => handleKeyDown(e, index, 3)}
                                 placeholder="0.00"
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
                               />
@@ -1285,12 +1373,21 @@ const NewOrder = () => {
                         )}
                         <td className="px-4 py-3">
                           <input
-                            type="number"
-                            step="0.01"
+                            ref={(el) => {
+                              if (el) {
+                                const colIndex = formData.orderType === 'local' ? 1 : 4;
+                                inputGridRefs.current[`${index}-${colIndex}`] = el;
+                              }
+                            }}
+                            type="text"
                             value={product.netWeight}
                             onChange={(e) =>
                               handleProductChange(product.id, 'netWeight', e.target.value)
                             }
+                            onKeyDown={(e) => {
+                              const colIndex = formData.orderType === 'local' ? 1 : 4;
+                              handleKeyDown(e, index, colIndex);
+                            }}
                             placeholder="0.00"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
                           />
@@ -1298,26 +1395,18 @@ const NewOrder = () => {
                         {formData.orderType !== 'local' && (
                           <td className="px-4 py-3">
                             <input
-                              type="number"
-                              step="0.01"
+                              ref={(el) => {
+                                if (el) inputGridRefs.current[`${index}-5`] = el;
+                              }}
+                              type="text"
                               value={product.grossWeight}
                               onChange={(e) =>
                                 handleProductChange(product.id, 'grossWeight', e.target.value)
                               }
+                              onKeyDown={(e) => handleKeyDown(e, index, 5)}
                               placeholder="0.00"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
                             />
-                          </td>
-                        )}
-                        {formData.orderType === 'local' && (
-                          <td className="px-4 py-3">
-                            <button
-                              type="button"
-                              onClick={() => toggleMoreDetails(product.id)}
-                              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 text-sm"
-                            >
-                              {product.showMoreDetails ? 'Hide Details' : 'Add More Details'}
-                            </button>
                           </td>
                         )}
                         <td className="px-4 py-3">
@@ -1331,81 +1420,6 @@ const NewOrder = () => {
                           </button>
                         </td>
                       </tr>
-                      {formData.orderType === 'local' && product.showMoreDetails && (
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <td colSpan="4" className="px-4 py-4">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Type of Packing
-                                </label>
-                                <select
-                                  value={product.packingType}
-                                  onChange={(e) => handleProductChange(product.id, 'packingType', e.target.value)}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
-                                >
-                                  <option value="">Select packing</option>
-                                  {/* Filter packing options based on product's allowed types */}
-                                  {packingOptions
-                                    .filter(item =>
-                                      !product.allowedPackingTypes ||
-                                      product.allowedPackingTypes.length === 0 ||
-                                      product.allowedPackingTypes.includes(item.name)
-                                    )
-                                    .map((item) => (
-                                      <option key={item.id} value={item.name}>
-                                        {item.name}
-                                      </option>
-                                    ))}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  No of Boxes/Bags
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={product.numBoxes}
-                                  onChange={(e) => handleProductChange(product.id, 'numBoxes', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Box Weight (kg)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={product.boxWeight}
-                                  onChange={(e) =>
-                                    handleProductChange(product.id, 'boxWeight', e.target.value)
-                                  }
-                                  placeholder="0.00"
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Gross Weight (kg)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={product.grossWeight}
-                                  onChange={(e) =>
-                                    handleProductChange(product.id, 'grossWeight', e.target.value)
-                                  }
-                                  placeholder="0.00"
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D7C66] focus:border-transparent"
-                                />
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
                     </React.Fragment>
                   ))}
                 </tbody>

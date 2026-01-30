@@ -36,6 +36,9 @@ const OrderAssignCreateStage1 = () => {
   const [farmerAvailability, setFarmerAvailability] = useState({});
   const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
   const [stage1Status, setStage1Status] = useState(null); // Store stage1_status from assignment data
+  
+  // Refs for keyboard navigation
+  const inputGridRefs = useRef({});
 
   // Fetch available stock and farmer availability on component mount
   useEffect(() => {
@@ -96,6 +99,54 @@ const OrderAssignCreateStage1 = () => {
   useEffect(() => {
     hasLoadedData.current = false;
   }, [id]);
+
+  // Handle arrow key navigation between inputs
+  const handleKeyDown = (e, rowIndex, colIndex, totalRows) => {
+    const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (!arrowKeys.includes(e.key)) return;
+
+    e.preventDefault();
+    
+    // Column mapping: 0=Entity Type, 1=Name, 2=Place, 3=Picked Qty/Boxes
+    const columnCount = 4;
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+    
+    switch (e.key) {
+      case 'ArrowRight':
+        nextCol = colIndex + 1;
+        if (nextCol >= columnCount) {
+          nextCol = 0;
+          nextRow = Math.min(nextRow + 1, totalRows - 1);
+        }
+        break;
+      case 'ArrowLeft':
+        nextCol = colIndex - 1;
+        if (nextCol < 0) {
+          nextCol = columnCount - 1;
+          nextRow = Math.max(nextRow - 1, 0);
+        }
+        break;
+      case 'ArrowDown':
+        nextRow = Math.min(nextRow + 1, totalRows - 1);
+        break;
+      case 'ArrowUp':
+        nextRow = Math.max(nextRow - 1, 0);
+        break;
+    }
+    
+    // Get the next input element
+    const nextInputKey = `${nextRow}-${nextCol}`;
+    const nextInput = inputGridRefs.current[nextInputKey];
+    
+    if (nextInput) {
+      nextInput.focus();
+      // Select all text for easy editing (only for input elements, not selects)
+      if (nextInput.select && nextInput.tagName === 'INPUT') {
+        setTimeout(() => nextInput.select(), 0);
+      }
+    }
+  };
 
   // Helper function to create delivery route for an assignment
   const createDeliveryRoute = (entity, entityType, row, assignedQty, isRemaining = false) => {
@@ -909,23 +960,26 @@ const OrderAssignCreateStage1 = () => {
 
         {/* Product Table - Desktop */}
         <div className="hidden lg:block overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Product</th>
-                {isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Needed No of Boxes/Bags</th>}
-                {isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Needed Weight (kg)</th>}
-                {!isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Quantity Needed</th>}
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Entity Type <span className="text-red-500">*</span></th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Name <span className="text-red-500">*</span></th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Place</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Entity Stock</th>
-                {isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Picked No of Boxes/Bags</th>}
-                {!isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Picked Qty</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {displayRows.map((row, index) => {
+          {(() => {
+            const displayRows = getDisplayRows();
+            return (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Product</th>
+                    {isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Needed No of Boxes/Bags</th>}
+                    {isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Needed Weight (kg)</th>}
+                    {!isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Quantity Needed</th>}
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Entity Type <span className="text-red-500">*</span></th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Name <span className="text-red-500">*</span></th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Place</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Entity Stock</th>
+                    {isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Picked No of Boxes/Bags</th>}
+                    {!isBoxBasedOrder && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Picked Qty</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {displayRows.map((row, index) => {
                 const productName = (row.product_name || row.product)?.replace(/^\d+\s*-\s*/, '');
                 const stockQty = availableStock[productName] || 0;
 
@@ -958,6 +1012,10 @@ const OrderAssignCreateStage1 = () => {
                     )}
                     <td className="px-4 py-4">
                       <select
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-0`] = el;
+                        }}
+                        onKeyDown={(e) => handleKeyDown(e, index, 0, displayRows.length)}
                         className="min-w-[130px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                         value={row.entityType || ''}
                         onChange={(e) => {
@@ -990,6 +1048,10 @@ const OrderAssignCreateStage1 = () => {
                     </td>
                     <td className="px-4 py-4">
                       <select
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-1`] = el;
+                        }}
+                        onKeyDown={(e) => handleKeyDown(e, index, 1, displayRows.length)}
                         className="min-w-[150px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                         value={row.assignedTo}
                         disabled={!row.entityType}
@@ -1053,6 +1115,10 @@ const OrderAssignCreateStage1 = () => {
                     </td>
                     <td className="px-4 py-4">
                       <select
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`${index}-2`] = el;
+                        }}
+                        onKeyDown={(e) => handleKeyDown(e, index, 2, displayRows.length)}
                         className="min-w-[140px] w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                         value={row.place || ''}
                         onChange={(e) => {
@@ -1096,10 +1162,13 @@ const OrderAssignCreateStage1 = () => {
                     {isBoxBasedOrder && (
                       <td className="px-4 py-4">
                         <input
-                          type="number"
-                          step="1"
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-3`] = el;
+                          }}
+                          type="text"
                           value={row.assignedBoxes || ''}
                           placeholder="0"
+                          onKeyDown={(e) => handleKeyDown(e, index, 3, displayRows.length)}
                           onChange={(e) => {
                             const newBoxes = e.target.value;
                             if (row.isRemaining) {
@@ -1149,10 +1218,13 @@ const OrderAssignCreateStage1 = () => {
                     {!isBoxBasedOrder && (
                       <td className="px-4 py-4">
                         <input
-                          type="number"
-                          step="0.01"
+                          ref={(el) => {
+                            if (el) inputGridRefs.current[`${index}-3`] = el;
+                          }}
+                          type="text"
                           value={row.assignedQty || ''}
                           placeholder="0"
+                          onKeyDown={(e) => handleKeyDown(e, index, 3, displayRows.length)}
                           onChange={(e) => {
                             const newQty = e.target.value;
                             if (row.isRemaining) {
@@ -1200,13 +1272,17 @@ const OrderAssignCreateStage1 = () => {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
+                </tbody>
+              </table>
+            );
+          })()}
         </div>
 
         {/* Product Cards - Mobile */}
         <div className="lg:hidden space-y-4">
-          {displayRows.map((row, index) => {
+          {(() => {
+            const displayRows = getDisplayRows();
+            return displayRows.map((row, index) => {
             const productName = (row.product_name || row.product)?.replace(/^\d+\s*-\s*/, '');
             const stockQty = availableStock[productName] || 0;
 
@@ -1381,10 +1457,13 @@ const OrderAssignCreateStage1 = () => {
                         Picked Qty <span className="text-red-500">*</span>
                       </label>
                       <input
-                        type="number"
-                        step="0.01"
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`mobile-${index}-3`] = el;
+                        }}
+                        type="text"
                         value={row.assignedQty || ''}
                         placeholder="0"
+                        onKeyDown={(e) => handleKeyDown(e, index, 3, displayRows.length)}
                         onChange={(e) => {
                           const newQty = e.target.value;
                           if (row.isRemaining) {
@@ -1434,10 +1513,13 @@ const OrderAssignCreateStage1 = () => {
                         Picked Boxes/Bags
                       </label>
                       <input
-                        type="number"
-                        step="1"
+                        ref={(el) => {
+                          if (el) inputGridRefs.current[`mobile-${index}-3`] = el;
+                        }}
+                        type="text"
                         value={row.assignedBoxes || ''}
                         placeholder="0"
+                        onKeyDown={(e) => handleKeyDown(e, index, 3, displayRows.length)}
                         onChange={(e) => {
                           const newBoxes = e.target.value;
                           if (row.isRemaining) {
@@ -1485,7 +1567,8 @@ const OrderAssignCreateStage1 = () => {
                 </div>
               </div>
             );
-          })}
+          });
+          })()}
         </div>
 
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ChevronDown, Edit2, X, MapPin, Check, Package, Truck, User } from 'lucide-react';
 import { getAssignmentOptions, updateStage1Assignment, getOrderAssignment, updateStage4Assignment } from '../../../api/orderAssignmentApi';
@@ -36,6 +36,35 @@ const OrderAssignCreateStage4 = () => {
     const [farmerAvailability, setFarmerAvailability] = useState({});
     const [isBoxBasedOrder, setIsBoxBasedOrder] = useState(false); // Track if order was created with boxes
     const [stage4Status, setStage4Status] = useState(null); // Store stage4_status from assignment data
+
+    // Simple vertical navigation for Price inputs only
+    const priceInputRefs = useRef({});
+
+    const handlePriceArrowKey = (e, rowIndex, totalRows) => {
+        const arrowKeys = ['ArrowUp', 'ArrowDown'];
+        if (!arrowKeys.includes(e.key)) return;
+
+        e.preventDefault();
+
+        let nextRow = rowIndex;
+        if (e.key === 'ArrowDown') {
+            nextRow = Math.min(rowIndex + 1, totalRows - 1);
+        } else if (e.key === 'ArrowUp') {
+            nextRow = Math.max(rowIndex - 1, 0);
+        }
+
+        const refEntry = priceInputRefs.current[nextRow];
+        // Support both single element and array of elements (desktop + mobile)
+        const candidates = Array.isArray(refEntry) ? refEntry : [refEntry].filter(Boolean);
+        const nextInput = candidates.find(el => el && el.offsetParent !== null) || candidates[0];
+
+        if (nextInput) {
+            nextInput.focus();
+            if (nextInput.tagName === 'INPUT' && nextInput.select) {
+                setTimeout(() => nextInput.select(), 0);
+            }
+        }
+    };
 
     // Helper function to check if price was updated today
     const getTodaysMarketPrice = (product) => {
@@ -1227,10 +1256,9 @@ const OrderAssignCreateStage4 = () => {
                                         {isBoxBasedOrder && (
                                             <td className="px-4 py-4">
                                                 <input
-                                                    type="number"
-                                                    step="1"
+                                                    type="text"
                                                     value={row.assignedBoxes || ''}
-                                                    placeholder="0"
+                                                    placeholder=""
                                                     onChange={(e) => {
                                                         const newBoxes = e.target.value;
                                                         if (row.isRemaining) {
@@ -1281,10 +1309,9 @@ const OrderAssignCreateStage4 = () => {
                                         {!isBoxBasedOrder && (
                                             <td className="px-4 py-4">
                                                 <input
-                                                    type="number"
-                                                    step="0.01"
+                                                    type="text"
                                                     value={row.assignedQty || ''}
-                                                    placeholder="0"
+                                                    placeholder=""
                                                     onChange={(e) => {
                                                         const newQty = e.target.value;
                                                         if (row.isRemaining) {
@@ -1344,10 +1371,18 @@ const OrderAssignCreateStage4 = () => {
                                         </td>
                                         <td className="px-4 py-4">
                                             <input
-                                                type="number"
-                                                step="0.01"
-                                                value={row.price ?? ''}
-                                                placeholder="0.00"
+                                                ref={(el) => {
+                                                    if (el) {
+                                                        const existing = priceInputRefs.current[index] || [];
+                                                        priceInputRefs.current[index] = Array.isArray(existing)
+                                                            ? [...existing.filter(Boolean), el]
+                                                            : [existing, el].filter(Boolean);
+                                                    }
+                                                }}
+                                                type="text"
+                                                value={row.price ? row.price : ''}
+                                                placeholder=""
+                                                onKeyDown={(e) => handlePriceArrowKey(e, index, displayRows.length)}
                                                 onChange={(e) => {
                                                     const newPrice = e.target.value;
                                                     if (row.isRemaining) {
@@ -1568,10 +1603,9 @@ const OrderAssignCreateStage4 = () => {
                                                 Picked Qty <span className="text-red-500">*</span>
                                             </label>
                                             <input
-                                                type="number"
-                                                step="0.01"
+                                                type="text"
                                                 value={row.assignedQty || ''}
-                                                placeholder="0"
+                                                placeholder=""
                                                 onChange={(e) => {
                                                     const newQty = e.target.value;
                                                     if (row.isRemaining) {
@@ -1621,10 +1655,9 @@ const OrderAssignCreateStage4 = () => {
                                                 Picked Boxes/Bags
                                             </label>
                                             <input
-                                                type="number"
-                                                step="1"
+                                                type="text"
                                                 value={row.assignedBoxes || ''}
-                                                placeholder="0"
+                                                placeholder=""
                                                 onChange={(e) => {
                                                     const newBoxes = e.target.value;
                                                     if (row.isRemaining) {
@@ -1688,10 +1721,18 @@ const OrderAssignCreateStage4 = () => {
                                         <div>
                                             <label className="block text-xs font-semibold text-gray-700 mb-1">Price</label>
                                             <input
-                                                type="number"
-                                                step="0.01"
-                                                value={row.price ?? ''}
-                                                placeholder="0.00"
+                                                ref={(el) => {
+                                                    if (el) {
+                                                        const existing = priceInputRefs.current[index] || [];
+                                                        priceInputRefs.current[index] = Array.isArray(existing)
+                                                            ? [...existing.filter(Boolean), el]
+                                                            : [existing, el].filter(Boolean);
+                                                    }
+                                                }}
+                                                type="text"
+                                                value={row.price ? row.price : ''}
+                                                placeholder=""
+                                                onKeyDown={(e) => handlePriceArrowKey(e, index, displayRows.length)}
                                                 onChange={(e) => {
                                                     const newPrice = e.target.value;
                                                     if (row.isRemaining) {

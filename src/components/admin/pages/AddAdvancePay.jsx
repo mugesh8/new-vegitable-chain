@@ -8,7 +8,7 @@ const AddAdvancePay = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const [advanceData, setAdvanceData] = useState({
-    driver_id: '',
+    driver_id: id || '',
     date: new Date().toISOString().split('T')[0],
     advance_amount: ''
   });
@@ -23,7 +23,11 @@ const AddAdvancePay = () => {
     try {
       const response = await getAllDrivers();
       if (response.success) {
-        setDrivers(response.data);
+        const allDrivers = response.data;
+        const filteredDrivers = id
+          ? allDrivers.filter((driver) => String(driver.did) === String(id))
+          : allDrivers;
+        setDrivers(filteredDrivers);
       }
     } catch (error) {
       console.error('Error fetching drivers:', error);
@@ -52,7 +56,7 @@ const AddAdvancePay = () => {
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <button
-            onClick={() => navigate(`/advance-pay-management`)}
+            onClick={() => navigate(id ? `/advance-pay-management` : '/advance-pay-management')}
             className="flex items-center gap-2 text-[#0D5C4D] hover:text-[#0a6354] transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -109,7 +113,7 @@ const AddAdvancePay = () => {
             <div className="flex gap-4 pt-4">
               <button
                 type="button"
-                onClick={() => navigate(`/drivers/${id}`)}
+                onClick={() => navigate(`/drivers/${id || ''}`)}
                 className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
               >
                 Cancel

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, Calendar, ArrowLeft } from 'lucide-react';
 import { createLabour } from '../../../api/labourApi';
+import { createNotification } from '../../../api/notificationApi';
 
 const AddLabour = () => {
   const navigate = useNavigate();
@@ -75,6 +76,18 @@ const AddLabour = () => {
       if (profileImage) formDataToSend.append('profile_image', profileImage);
       
       await createLabour(formDataToSend);
+
+      try {
+        await createNotification({
+          title: 'New labour added',
+          message: `Labour ${formData.fullName} has been registered.`,
+          type: 'success',
+          category: 'Labour'
+        });
+      } catch (notifyErr) {
+        console.error('Failed to create labour notification:', notifyErr);
+      }
+
       navigate('/labour');
     } catch (error) {
       console.error('Error creating labour:', error);

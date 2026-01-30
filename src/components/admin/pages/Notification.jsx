@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   CheckCircle, 
   AlertCircle, 
@@ -11,116 +11,224 @@ import {
   Trash2,
   Check
 } from 'lucide-react';
+import {
+  getNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  clearNotifications
+} from '../../../api/notificationApi';
 
 const Notifications = () => {
   const [filter, setFilter] = useState('all'); // all, unread, read
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const notifications = [
-    {
-      id: 1,
-      type: 'urgent',
-      icon: AlertCircle,
-      iconBg: 'bg-red-100',
-      iconColor: 'text-red-600',
-      title: 'Urgent: 3 orders pending local pickup',
-      description: 'Local pickup deadline in 2 hours',
-      time: '5 minutes ago',
-      timestamp: '2024-11-15 10:25 AM',
-      unread: true,
-      category: 'Orders'
-    },
-    {
-      id: 2,
-      type: 'success',
-      icon: CheckCircle,
-      iconBg: 'bg-green-100',
-      iconColor: 'text-green-600',
-      title: 'All payouts for today completed',
-      description: '156 labours paid successfully',
-      time: '15 minutes ago',
-      timestamp: '2024-11-15 10:15 AM',
-      unread: true,
-      category: 'Payouts'
-    },
-    {
-      id: 3,
-      type: 'info',
-      icon: Package,
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      title: 'New order #1847 created',
-      description: 'Farmer: Green Valley Farms',
-      time: '32 minutes ago',
-      timestamp: '2024-11-15 09:58 AM',
-      unread: false,
-      category: 'Orders'
-    },
-    {
-      id: 4,
-      type: 'warning',
-      icon: AlertTriangle,
-      iconBg: 'bg-orange-100',
-      iconColor: 'text-orange-600',
-      title: 'Low stock alert: Tomatoes',
-      description: 'Only 45kg remaining in inventory',
-      time: '1 hour ago',
-      timestamp: '2024-11-15 09:30 AM',
-      unread: false,
-      category: 'Inventory'
-    },
-    {
-      id: 5,
-      type: 'success',
-      icon: CheckCircle,
-      iconBg: 'bg-green-100',
-      iconColor: 'text-green-600',
-      title: 'Driver completed delivery to Line Airport',
-      description: 'Order #1842 - Driver: John Smith',
-      time: '2 hours ago',
-      timestamp: '2024-11-15 08:30 AM',
-      unread: false,
-      category: 'Deliveries'
-    },
-    {
-      id: 6,
-      type: 'info',
-      icon: Package,
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      title: 'New farmer registration',
-      description: 'Sunrise Organic Farms has registered',
-      time: '3 hours ago',
-      timestamp: '2024-11-15 07:30 AM',
-      unread: false,
-      category: 'Farmers'
-    },
-    {
-      id: 7,
-      type: 'success',
-      icon: CheckCircle,
-      iconBg: 'bg-green-100',
-      iconColor: 'text-green-600',
-      title: 'Quality check passed',
-      description: 'Batch #2341 approved for delivery',
-      time: '4 hours ago',
-      timestamp: '2024-11-15 06:30 AM',
-      unread: false,
-      category: 'Quality'
-    },
-    {
-      id: 8,
-      type: 'warning',
-      icon: AlertTriangle,
-      iconBg: 'bg-orange-100',
-      iconColor: 'text-orange-600',
-      title: 'Driver delay reported',
-      description: 'Order #1839 - Estimated 30 min delay',
-      time: '5 hours ago',
-      timestamp: '2024-11-15 05:30 AM',
-      unread: false,
-      category: 'Deliveries'
+  // Function to calculate time ago
+  const getTimeAgo = (date) => {
+    if (!date) return '';
+    
+    const now = new Date();
+    const past = new Date(date);
+    const diffInSeconds = Math.floor((now - past) / 1000);
+    
+    if (diffInSeconds < 60) {
+      return 'just now';
     }
-  ];
+    
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+      return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) {
+      return `${diffInDays} day${diffInDays !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInWeeks = Math.floor(diffInDays / 7);
+    if (diffInWeeks < 4) {
+      return `${diffInWeeks} week${diffInWeeks !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInMonths = Math.floor(diffInDays / 30);
+    if (diffInMonths < 12) {
+      return `${diffInMonths} month${diffInMonths !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInYears = Math.floor(diffInDays / 365);
+    return `${diffInYears} year${diffInYears !== 1 ? 's' : ''} ago`;
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const res = await getNotifications();
+        // Expecting res.data or res.notifications; handle both
+        const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : res?.notifications || []);
+
+        const mapped = list.map((n) => {
+          // Backend uses is_read (with underscore) and nid (not id)
+          const isUnread = n.is_read === false || n.read === false || n.status === 'unread';
+          const createdAt = n.createdAt ? new Date(n.createdAt) : null;
+
+          return {
+            id: n.nid || n._id || n.id, // Backend uses nid
+            backend: n,
+            type: n.type || 'info',
+            icon: (n.type === 'urgent' || n.priority === 'high') ? AlertCircle
+              : n.type === 'warning' ? AlertTriangle
+              : n.type === 'success' ? CheckCircle
+              : Package,
+            iconBg: (n.type === 'urgent' || n.priority === 'high') ? 'bg-red-100'
+              : n.type === 'warning' ? 'bg-orange-100'
+              : n.type === 'success' ? 'bg-green-100'
+              : 'bg-blue-100',
+            iconColor: (n.type === 'urgent' || n.priority === 'high') ? 'text-red-600'
+              : n.type === 'warning' ? 'text-orange-600'
+              : n.type === 'success' ? 'text-green-600'
+              : 'text-blue-600',
+            title: n.title || n.heading || 'Notification',
+            description: n.message || n.description || '',
+            time: getTimeAgo(createdAt),
+            timestamp: createdAt ? createdAt.toLocaleString() : '',
+            unread: isUnread,
+            category: n.category || n.module || 'General',
+          };
+        });
+
+        setNotifications(mapped);
+      } catch (err) {
+        console.error('Error fetching notifications', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleMarkAllRead = async () => {
+    try {
+      // Optimistically update local state
+      setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+      
+      // Mark all as read in backend
+      await markAllNotificationsAsRead();
+      
+      // Trigger Navbar refresh immediately (multiple times to ensure it catches)
+      window.dispatchEvent(new CustomEvent('refreshNotifications'));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('refreshNotifications'));
+      }, 200);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('refreshNotifications'));
+      }, 500);
+    } catch (err) {
+      console.error('Error marking all notifications as read', err);
+      // Refresh to get correct state on error
+      const res = await getNotifications();
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : res?.notifications || []);
+      const mapped = list.map((n) => {
+        // Backend uses is_read (with underscore)
+        const isUnread = n.is_read === false || n.read === false || n.status === 'unread';
+        const createdAt = n.createdAt ? new Date(n.createdAt) : null;
+        return {
+          id: n._id || n.id,
+          backend: n,
+          type: n.type || 'info',
+          icon: (n.type === 'urgent' || n.priority === 'high') ? AlertCircle
+            : n.type === 'warning' ? AlertTriangle
+            : n.type === 'success' ? CheckCircle
+            : Package,
+          iconBg: (n.type === 'urgent' || n.priority === 'high') ? 'bg-red-100'
+            : n.type === 'warning' ? 'bg-orange-100'
+            : n.type === 'success' ? 'bg-green-100'
+            : 'bg-blue-100',
+          iconColor: (n.type === 'urgent' || n.priority === 'high') ? 'text-red-600'
+            : n.type === 'warning' ? 'text-orange-600'
+            : n.type === 'success' ? 'text-green-600'
+            : 'text-blue-600',
+          title: n.title || n.heading || 'Notification',
+          description: n.message || n.description || '',
+          time: getTimeAgo(createdAt),
+          timestamp: createdAt ? createdAt.toLocaleString() : '',
+          unread: isUnread,
+          category: n.category || n.module || 'General',
+        };
+      });
+      setNotifications(mapped);
+    }
+  };
+
+  const handleClearAll = async () => {
+    try {
+      await clearNotifications();
+      setNotifications([]);
+    } catch (err) {
+      console.error('Error clearing notifications', err);
+    }
+  };
+
+  const handleMarkOneRead = async (id) => {
+    try {
+      // Optimistically update local state immediately
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, unread: false } : n))
+      );
+      
+      // Mark as read in backend
+      await markNotificationAsRead(id);
+      
+      // Trigger Navbar refresh immediately (multiple times to ensure it catches)
+      window.dispatchEvent(new CustomEvent('refreshNotifications'));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('refreshNotifications'));
+      }, 200);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('refreshNotifications'));
+      }, 500);
+    } catch (err) {
+      console.error('Error marking notification as read', err);
+      // Revert on error
+      const res = await getNotifications();
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : res?.notifications || []);
+      const mapped = list.map((n) => {
+        // Backend uses is_read (with underscore)
+        const isUnread = n.is_read === false || n.read === false || n.status === 'unread';
+        const createdAt = n.createdAt ? new Date(n.createdAt) : null;
+        return {
+          id: n._id || n.id,
+          backend: n,
+          type: n.type || 'info',
+          icon: (n.type === 'urgent' || n.priority === 'high') ? AlertCircle
+            : n.type === 'warning' ? AlertTriangle
+            : n.type === 'success' ? CheckCircle
+            : Package,
+          iconBg: (n.type === 'urgent' || n.priority === 'high') ? 'bg-red-100'
+            : n.type === 'warning' ? 'bg-orange-100'
+            : n.type === 'success' ? 'bg-green-100'
+            : 'bg-blue-100',
+          iconColor: (n.type === 'urgent' || n.priority === 'high') ? 'text-red-600'
+            : n.type === 'warning' ? 'text-orange-600'
+            : n.type === 'success' ? 'text-green-600'
+            : 'text-blue-600',
+          title: n.title || n.heading || 'Notification',
+          description: n.message || n.description || '',
+          time: getTimeAgo(createdAt),
+          timestamp: createdAt ? createdAt.toLocaleString() : '',
+          unread: isUnread,
+          category: n.category || n.module || 'General',
+        };
+      });
+      setNotifications(mapped);
+    }
+  };
 
   const filteredNotifications = notifications.filter(notification => {
     if (filter === 'unread') return notification.unread;
@@ -142,12 +250,18 @@ const Notifications = () => {
             </p>
           </div>
           <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
-            <button className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+            <button
+              onClick={handleMarkAllRead}
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+            >
               <Check className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
               <span className="hidden sm:inline">Mark all as read</span>
               <span className="sm:hidden">Mark all</span>
             </button>
-            <button className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-2">
+            <button
+              onClick={handleClearAll}
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+            >
               <Trash2 className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
               <span className="hidden sm:inline">Clear all</span>
               <span className="sm:hidden">Clear</span>
@@ -206,7 +320,14 @@ const Notifications = () => {
 
       {/* Notifications List */}
       <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm overflow-hidden">
-        {filteredNotifications.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-16">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Clock className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Loading notifications...</h3>
+          </div>
+        ) : filteredNotifications.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-8 h-8 text-gray-400" />
@@ -219,7 +340,13 @@ const Notifications = () => {
             const Icon = notification.icon;
             return (
               <div
-                key={notification.id}
+                key={notification.id || `notification-${index}`}
+                onClick={() => {
+                  // Mark as read when clicked if unread
+                  if (notification.unread) {
+                    handleMarkOneRead(notification.id);
+                  }
+                }}
                 className={`p-4 sm:p-6 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${
                   notification.unread ? 'bg-blue-50/30' : ''
                 } ${index === filteredNotifications.length - 1 ? 'border-b-0' : ''}`}
@@ -241,7 +368,10 @@ const Notifications = () => {
                       }`}>
                         {notification.title}
                       </h4>
-                      <button className="p-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0">
+                      <button
+                        onClick={() => handleMarkOneRead(notification.id)}
+                        className="p-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+                      >
                         <MoreVertical className="w-4 h-4 text-gray-400" />
                       </button>
                     </div>
@@ -251,7 +381,12 @@ const Notifications = () => {
                     <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-gray-400">
                       <span className="flex items-center gap-1 whitespace-nowrap">
                         <Clock className="w-3 h-3 flex-shrink-0" />
-                        {notification.time}
+                        <span>{notification.time}</span>
+                        {notification.timestamp && (
+                          <span className="text-[10px] text-gray-400 ml-1">
+                            ({notification.timestamp})
+                          </span>
+                        )}
                       </span>
                       <span className="flex items-center gap-1 whitespace-nowrap">
                         <Filter className="w-3 h-3 flex-shrink-0" />

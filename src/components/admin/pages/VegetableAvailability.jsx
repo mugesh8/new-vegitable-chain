@@ -3,13 +3,12 @@ import { ArrowLeft, Plus, Edit2, Trash2, Eye } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getFarmerById } from '../../../api/farmerApi';
 import { createVegetableAvailability, getVegetableAvailabilityByFarmer, updateVegetableAvailability, deleteVegetableAvailability } from '../../../api/vegetableAvailabilityApi';
-import { getAllProducts } from '../../../api/productApi';
 
 const VegetableAvailability = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const [farmer, setFarmer] = useState(null);
-  const [products, setProducts] = useState([]);
+  const [farmerProducts, setFarmerProducts] = useState([]); // Only this farmer's products (from product_list)
   const [availabilities, setAvailabilities] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState('add');
@@ -27,22 +26,31 @@ const VegetableAvailability = () => {
 
   const fetchData = async () => {
     try {
-      const [farmerRes, availabilityRes, productsRes] = await Promise.all([
+      const [farmerRes, availabilityRes] = await Promise.all([
         getFarmerById(id),
-        getVegetableAvailabilityByFarmer(id),
-        getAllProducts(1, 1000) // Fetch all products
+        getVegetableAvailabilityByFarmer(id)
       ]);
 
-      setFarmer(farmerRes.data);
+      const farmerData = farmerRes.data;
+      setFarmer(farmerData);
 
-      // Get products from the products API
-      const allProducts = Array.isArray(productsRes.data) ? productsRes.data : [];
-      setProducts(allProducts);
+      // Parse farmer's product_list (JSON string like "[{\"pid\":6,\"product_name\":\"...\"}]")
+      let parsed = [];
+      if (farmerData?.product_list) {
+        try {
+          const raw = farmerData.product_list;
+          parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (!Array.isArray(parsed)) parsed = [];
+        } catch (e) {
+          console.warn('Failed to parse farmer product_list:', e);
+        }
+      }
+      setFarmerProducts(parsed);
 
       setAvailabilities(Array.isArray(availabilityRes.data) ? availabilityRes.data : []);
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      setProducts([]);
+      setFarmerProducts([]);
       setAvailabilities([]);
     }
   };
@@ -162,7 +170,8 @@ const VegetableAvailability = () => {
           <h2 className="text-2xl font-bold text-gray-800">Vegetable Availability - {farmer?.farmer_name}</h2>
           <button
             onClick={handleAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-[#0D7C66] text-white rounded-lg hover:bg-[#0a6352] transition-colors"
+            disabled={farmerProducts.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-[#0D7C66] text-white rounded-lg hover:bg-[#0a6352] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-5 h-5" />
             Add Availability
@@ -230,8 +239,8 @@ const VegetableAvailability = () => {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
             <h3 className="text-xl font-bold text-gray-800 mb-4">
               {modalMode === 'add' ? 'Add' : modalMode === 'edit' ? 'Edit' : 'View'} Vegetable Availability
             </h3>
@@ -246,8 +255,10 @@ const VegetableAvailability = () => {
                     required
                     disabled={modalMode === 'view'}
                   >
-                    <option value="">Select Vegetable</option>
-                    {products.map((product) => (
+                    <option value="">
+                      {farmerProducts.length === 0 ? 'No products assigned to this farmer' : 'Select Vegetable'}
+                    </option>
+                    {farmerProducts.map((product) => (
                       <option key={product.pid} value={product.product_name}>
                         {product.product_name}
                       </option>

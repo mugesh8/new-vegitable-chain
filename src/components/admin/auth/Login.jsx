@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { loginAdmin } from '../../../api/authApi';
-import logo from '../../../assets/logo.jpg';
+import logo from '../../../assets/logo.png';
 
 const VeggiChainLogin = () => {
   const navigate = useNavigate();
@@ -59,11 +59,42 @@ const VeggiChainLogin = () => {
     if (validateForm()) {
       setLoading(true);
       try {
-        const data = await loginAdmin(formData.email, formData.password);
-        localStorage.setItem('authToken', data.token);
-        navigate('/dashboard');
+        const response = await loginAdmin(formData.email, formData.password);
+        
+        if (response.success) {
+          // Store access token
+          localStorage.setItem('authToken', response.token);
+          
+          // Decode JWT token to extract admin aid
+          try {
+            const tokenParts = response.token.split('.');
+            if (tokenParts.length === 3) {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              if (payload.aid) {
+                localStorage.setItem('adminAid', payload.aid);
+              }
+              // Optionally store role and username as well
+              if (payload.role) {
+                localStorage.setItem('adminRole', payload.role);
+              }
+              if (payload.username) {
+                localStorage.setItem('adminUsername', payload.username);
+              }
+            }
+          } catch (decodeError) {
+            console.error('Error decoding token:', decodeError);
+          }
+          
+          navigate('/dashboard');
+        } else {
+          setErrors({ general: response.message || 'Login failed. Please try again.' });
+        }
       } catch (error) {
-        setErrors({ general: error.message });
+        // Handle different error formats
+        const errorMessage = error.response?.data?.message || 
+                           error.message || 
+                           'An error occurred. Please try again.';
+        setErrors({ general: errorMessage });
       } finally {
         setLoading(false);
       }
@@ -182,29 +213,6 @@ const VeggiChainLogin = () => {
             )}
           </div>
 
-          {/* Remember Me & Forgot Password */}
-          <div className="flex items-center justify-between">
-            <label className="flex items-center cursor-pointer group">
-              <input
-                type="checkbox"
-                name="rememberMe"
-                checked={formData.rememberMe}
-                onChange={handleInputChange}
-                className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 focus:ring-2 cursor-pointer"
-              />
-              <span className="ml-2 text-sm text-gray-600 group-hover:text-gray-800 transition-colors">
-                Remember me
-              </span>
-            </label>
-            <button
-              type="button"
-              onClick={handleForgotPassword}
-              className="text-sm text-teal-600 hover:text-teal-700 font-medium transition-colors"
-            >
-              Forgot Password?
-            </button>
-          </div>
-
           {/* Sign In Button */}
           <button
             type="submit"
@@ -214,29 +222,6 @@ const VeggiChainLogin = () => {
             {loading ? 'Signing In...' : 'Sign In'}
           </button>
 
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-white text-gray-400">OR</span>
-            </div>
-          </div>
-
-          {/* Sign Up Link */}
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">
-              Don't have an account?{' '}
-              <button
-                type="button"
-                onClick={handleSignUp}
-                className="text-teal-600 hover:text-teal-700 font-semibold transition-colors"
-              >
-                Sign Up Now
-              </button>
-            </p>
-          </div>
         </form>
       </div>
     </div>

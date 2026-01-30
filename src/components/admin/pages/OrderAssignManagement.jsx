@@ -251,41 +251,55 @@ const OrderAssignManagement = () => {
                     {(() => {
                       // Check for both 'local' and 'LOCAL GRADE ORDER' order types
                       const isLocalOrder = order.order_type === 'local' || order.order_type === 'LOCAL GRADE ORDER';
-                      const isStage1Completed = assignments[order.oid]?.stage1_status === 'completed';
+                      const assignment = assignments[order.oid];
+                      const isStage1Completed = assignment?.stage1_status === 'completed';
 
                       // For local orders, check if local order data actually exists
                       // Check for product_assignments or delivery_routes to determine if assignment exists
                       const localOrderData = localOrders[order.oid];
                       const hasLocalOrderData = isLocalOrder && localOrderData && (
-                        localOrderData.product_assignments || 
-                        localOrderData.productAssignments || 
-                        localOrderData.delivery_routes || 
+                        localOrderData.product_assignments ||
+                        localOrderData.productAssignments ||
+                        localOrderData.delivery_routes ||
                         localOrderData.deliveryRoutes ||
                         localOrderData.local_order_id
                       );
 
+                      // For flight orders, also consider stage 2 / stage 3 data as "already assigned"
+                      const hasStage2Or3Data = !isLocalOrder && assignment && (
+                        assignment.stage2_data ||
+                        assignment.stage2_summary_data ||
+                        assignment.stage3_data ||
+                        assignment.stage3_summary_data
+                      );
+
                       // For local orders, check if local order data exists
-                      // For flight orders, check if stage1 is completed
-                      const shouldShowEdit = isLocalOrder ? hasLocalOrderData : isStage1Completed;
+                      // For flight orders, check if any assignment data exists (stage1 completed or later stages saved)
+                      const shouldShowEdit = isLocalOrder ? hasLocalOrderData : (isStage1Completed || hasStage2Or3Data);
 
                       if (shouldShowEdit) {
                         return (
                           <button
                             onClick={() => {
                               if (isLocalOrder) {
-                                navigate(`/order-assign/local/${order.oid}`, { 
-                                  state: { 
+                                navigate(`/order-assign/local/${order.oid}`, {
+                                  state: {
                                     orderData: order,
-                                    localOrderData: localOrderData // Pass local order data for faster loading
-                                  } 
+                                    localOrderData: localOrderData, // Pass local order data for faster loading
+                                    isEdit: true
+                                  }
                                 });
                               } else {
-                                navigate(`/order-assign/stage1/${order.oid}`, { state: { orderData: order } });
+                                // For flight orders, always start from Stage 1 when editing,
+                                // but pass isEdit=true so downstream stages know this is an edit.
+                                navigate(`/order-assign/stage1/${order.oid}`, {
+                                  state: { orderData: order, isEdit: true }
+                                });
                               }
                             }}
                             className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
                           >
-                            Edit
+                            Edit Assign
                           </button>
                         );
                       } else {

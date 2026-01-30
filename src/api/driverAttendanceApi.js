@@ -48,6 +48,22 @@ export const markAbsent = async (driverId, data = {}) => {
   return response.data;
 };
 
+// Update check-in time (for existing attendance)
+export const updateCheckInTime = async (driverId, data = {}) => {
+  const response = await axios.patch(`${API_URL}/check-in/${driverId}`, data, {
+    headers: getAuthHeaders()
+  });
+  return response.data;
+};
+
+// Update check-out time (for existing attendance)
+export const updateCheckOutTime = async (driverId, data = {}) => {
+  const response = await axios.patch(`${API_URL}/check-out/${driverId}`, data, {
+    headers: getAuthHeaders()
+  });
+  return response.data;
+};
+
 // Get driver attendance history
 export const getDriverAttendanceHistory = async (driverId, params = {}) => {
   const response = await axios.get(`${API_URL}/history/${driverId}`, {

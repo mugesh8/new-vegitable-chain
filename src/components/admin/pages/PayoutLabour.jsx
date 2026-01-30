@@ -319,9 +319,6 @@ const LabourPayoutManagement = () => {
                     Labour Name
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Days Worked
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
                     Wage Rate
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
@@ -341,13 +338,13 @@ const LabourPayoutManagement = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="7" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="6" className="px-6 py-8 text-center text-[#6B8782]">
                       Loading labour payouts...
                     </td>
                   </tr>
                 ) : paginatedPayouts.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="6" className="px-6 py-8 text-center text-[#6B8782]">
                       No labour payouts found
                     </td>
                   </tr>
@@ -362,11 +359,6 @@ const LabourPayoutManagement = () => {
                       <td className="px-6 py-4">
                         <div className="font-semibold text-[#0D5C4D] text-sm">{payout.labourName}</div>
                         <div className="text-xs text-[#6B8782]">{payout.labourCode}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-[#0D5C4D]">
-                          {payout.daysWorked} days
-                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm font-medium text-[#0D5C4D]">

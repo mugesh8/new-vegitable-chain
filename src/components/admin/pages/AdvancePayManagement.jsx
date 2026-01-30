@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, ArrowLeft, MoreVertical, Eye, Edit, Trash2 } from 'lucide-react';
-import { getAllAdvancePays, deleteAdvancePay } from '../../../api/advancePayApi';
+import { getAllAdvancePays, getAdvancePaysByDriverId, deleteAdvancePay } from '../../../api/advancePayApi';
 
 const AdvancePayManagement = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const driverId = location.state?.driverId ? String(location.state.driverId) : null;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedPay, setSelectedPay] = useState(null);
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -31,16 +33,25 @@ const AdvancePayManagement = () => {
   const fetchAdvancePays = async () => {
     try {
       setLoading(true);
-      const response = await getAllAdvancePays();
+      const response = driverId
+        ? await getAdvancePaysByDriverId(driverId)
+        : await getAllAdvancePays();
       if (response.success) {
         const transformed = response.data.map(item => ({
           id: item.id,
           date: item.date,
-          driverName: item.driver?.driver_name || 'N/A',
+          driverName:
+            item.advancePayDriver?.driver_name ||
+            item.driver?.driver_name ||
+            item.driverName ||
+            'N/A',
           driverId: item.driver_id,
           amount: parseFloat(item.advance_amount)
         }));
-        setAdvancePayData(transformed);
+        const filtered = driverId
+          ? transformed.filter(p => String(p.driverId) === driverId)
+          : transformed;
+        setAdvancePayData(filtered);
       }
     } catch (error) {
       console.error('Error fetching advance pays:', error);
@@ -91,7 +102,7 @@ const AdvancePayManagement = () => {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
           <button
-            onClick={() => navigate('/drivers/1')}
+            onClick={() => navigate(driverId ? `/drivers/${driverId}` : '/drivers')}
             className="flex items-center gap-2 text-[#0D5C4D] hover:text-[#0a6354] transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -105,7 +116,7 @@ const AdvancePayManagement = () => {
         {/* Add Button */}
         <div className="flex justify-end mb-4">
           <button
-            onClick={() => navigate('/drivers/1/advance-pay')}
+            onClick={() => navigate(driverId ? `/drivers/${driverId}/advance-pay` : '/drivers/1/advance-pay')}
             className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors"
           >
             <Plus className="w-5 h-5" />

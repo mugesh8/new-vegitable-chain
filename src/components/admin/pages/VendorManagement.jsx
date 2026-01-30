@@ -6,9 +6,11 @@ import { getAllVendors } from '../../../api/vendorApi';
 import { getAllProducts } from '../../../api/productApi';
 import { BASE_URL } from '../../../config/config';
 import * as XLSX from 'xlsx-js-style';
+import { usePermissions } from '../../../context/PermissionsContext';
 
 const VendorDashboard = () => {
   const navigate = useNavigate();
+  const { loading: permLoading, hasPermission } = usePermissions();
   const [searchQuery, setSearchQuery] = useState('');
   const [openDropdown, setOpenDropdown] = useState(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
@@ -384,7 +386,7 @@ const VendorDashboard = () => {
     }
   };
 
-  if (loading) {
+  if (loading || permLoading) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="flex justify-center items-center h-64">
@@ -413,20 +415,24 @@ const VendorDashboard = () => {
     <div className="p-4 sm:p-6 lg:p-8">
       {/* Header with Add Button */}
       <div className="flex items-center justify-end gap-3 mb-6">
-        <button
-          onClick={handleExportVendors}
-          className="bg-[#1DB890] hover:bg-[#19a57e] text-white px-4 sm:px-6 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors shadow-sm"
-        >
-          <Download className="w-4 h-4" />
-          Export Excel
-        </button>
-        <button
-          onClick={() => navigate('/vendors/add')}
-          className="bg-[#0D7C66] hover:bg-[#0a6354] text-white px-4 sm:px-6 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Add Vendor
-        </button>
+        {hasPermission('Vendors', 'view') && (
+          <button
+            onClick={handleExportVendors}
+            className="bg-[#1DB890] hover:bg-[#19a57e] text-white px-4 sm:px-6 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Export Excel
+          </button>
+        )}
+        {hasPermission('Vendors', 'add') && (
+          <button
+            onClick={() => navigate('/vendors/add')}
+            className="bg-[#0D7C66] hover:bg-[#0a6354] text-white px-4 sm:px-6 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add Vendor
+          </button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -646,36 +652,42 @@ const VendorDashboard = () => {
             left: `${dropdownPosition.left}px`
           }}
         >
-          <button
-            onClick={() => {
-              const vendor = transformedVendors.find(v => `${v.vendor_type}-${v.vendorId}` === openDropdown);
-              if (vendor) handleAction('view', vendor);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-[#0D5C4D] hover:bg-[#F0F4F3] transition-colors flex items-center gap-2"
-          >
-            <Eye size={14} />
-            View
-          </button>
-          <button
-            onClick={() => {
-              const vendor = transformedVendors.find(v => `${v.vendor_type}-${v.vendorId}` === openDropdown);
-              if (vendor) handleAction('edit', vendor);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-[#0D5C4D] hover:bg-[#F0F4F3] transition-colors flex items-center gap-2"
-          >
-            <Edit size={14} />
-            Edit
-          </button>
-          <button
-            onClick={() => {
-              const vendor = transformedVendors.find(v => `${v.vendor_type}-${v.vendorId}` === openDropdown);
-              if (vendor) handleAction('delete', vendor);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-[#F0F4F3] transition-colors flex items-center gap-2"
-          >
-            <Trash2 size={14} />
-            Delete
-          </button>
+          {hasPermission('Vendors', 'view') && (
+            <button
+              onClick={() => {
+                const vendor = transformedVendors.find(v => `${v.vendor_type}-${v.vendorId}` === openDropdown);
+                if (vendor) handleAction('view', vendor);
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-[#0D5C4D] hover:bg-[#F0F4F3] transition-colors flex items-center gap-2"
+            >
+              <Eye size={14} />
+              View
+            </button>
+          )}
+          {hasPermission('Vendors', 'edit') && (
+            <button
+              onClick={() => {
+                const vendor = transformedVendors.find(v => `${v.vendor_type}-${v.vendorId}` === openDropdown);
+                if (vendor) handleAction('edit', vendor);
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-[#0D5C4D] hover:bg-[#F0F4F3] transition-colors flex items-center gap-2"
+            >
+              <Edit size={14} />
+              Edit
+            </button>
+          )}
+          {hasPermission('Vendors', 'delete') && (
+            <button
+              onClick={() => {
+                const vendor = transformedVendors.find(v => `${v.vendor_type}-${v.vendorId}` === openDropdown);
+                if (vendor) handleAction('delete', vendor);
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-[#F0F4F3] transition-colors flex items-center gap-2"
+            >
+              <Trash2 size={14} />
+              Delete
+            </button>
+          )}
         </div>
       )}
 

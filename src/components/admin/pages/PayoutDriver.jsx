@@ -7,6 +7,7 @@ import { getAllDrivers } from '../../../api/driverApi';
 import { getAllDriverRates } from '../../../api/driverRateApi';
 import { getAllFuelExpenses } from '../../../api/fuelExpenseApi';
 import { getAllExcessKMs } from '../../../api/excessKmApi';
+import { getAllAdvancePays } from '../../../api/advancePayApi';
 
 const DriverPayoutManagement = () => {
   const navigate = useNavigate();
@@ -30,12 +31,13 @@ const DriverPayoutManagement = () => {
     try {
       setLoading(true);
 
-      const [ordersRes, driversRes, driverRatesRes, fuelExpensesRes, excessKMsRes] = await Promise.all([
+      const [ordersRes, driversRes, driverRatesRes, fuelExpensesRes, excessKMsRes, advancePaysRes] = await Promise.all([
         getAllOrders().catch(() => ({ data: [], success: false })),
         getAllDrivers().catch(() => ({ data: [], success: false })),
         getAllDriverRates().catch(() => ({ data: [], success: false })),
         getAllFuelExpenses().catch(() => ({ data: [], success: false })),
-        getAllExcessKMs().catch(() => ({ data: [], success: false }))
+        getAllExcessKMs().catch(() => ({ data: [], success: false })),
+        getAllAdvancePays().catch(() => ({ data: [], success: false }))
       ]);
 
       const orders = ordersRes?.data || ordersRes || [];
@@ -43,6 +45,7 @@ const DriverPayoutManagement = () => {
       const driverRates = Array.isArray(driverRatesRes) ? driverRatesRes : (driverRatesRes?.data || []);
       const fuelExpenses = Array.isArray(fuelExpensesRes) ? fuelExpensesRes : (fuelExpensesRes?.data || []);
       const excessKMs = Array.isArray(excessKMsRes) ? excessKMsRes : (excessKMsRes?.data || []);
+      const advancePays = Array.isArray(advancePaysRes) ? advancePaysRes : (advancePaysRes?.data || []);
 
       console.log('Driver Payout Data:', {
         ordersCount: orders.length,
@@ -57,12 +60,85 @@ const DriverPayoutManagement = () => {
       );
 
       const ratesMap = {};
+      const kmLimitMap = {};
       driverRates.forEach(rate => {
         if (rate.status === 'Active') {
           const deliveryType = (rate.deliveryType || rate.delivery_type || '').toLowerCase();
           if (deliveryType) {
             ratesMap[deliveryType] = parseFloat(rate.amount || rate.rate || 0) || 0;
+            kmLimitMap[deliveryType] = parseFloat(rate.kilometers ?? rate.kilometer ?? rate.km ?? 0) || 0;
           }
+        }
+      });
+
+      const toDateStr = (val) => {
+        if (!val) return '';
+        try {
+          return new Date(val).toISOString().split('T')[0];
+        } catch {
+          return String(val).substring(0, 10);
+        }
+      };
+
+      const fuelByDriverByDate = {};
+      const fuelUnitPriceByDriverByDate = {};
+      fuelExpenses.forEach(expense => {
+        const driverId = String(expense.driver_id ?? expense.did ?? expense.driver?.did ?? '');
+        if (!driverId) return;
+        const dateStr = toDateStr(expense.date || expense.expense_date);
+        if (!dateStr) return;
+        if (!fuelByDriverByDate[driverId]) {
+          fuelByDriverByDate[driverId] = {};
+          fuelUnitPriceByDriverByDate[driverId] = {};
+        }
+        const unitPrice = parseFloat(expense.unit_price ?? expense.unitPrice ?? 0) || 0;
+        let amt = parseFloat(expense.total_amount || expense.total || 0) || 0;
+        if (!amt && unitPrice && expense.litre != null) amt = unitPrice * parseFloat(expense.litre);
+        fuelByDriverByDate[driverId][dateStr] = (fuelByDriverByDate[driverId][dateStr] || 0) + amt;
+        if (unitPrice) fuelUnitPriceByDriverByDate[driverId][dateStr] = unitPrice;
+      });
+
+      const advanceByDriverByDate = {};
+      advancePays.forEach(adv => {
+        const driverId = String(adv.driver_id ?? adv.did ?? adv.driver?.did ?? '');
+        if (!driverId) return;
+        const dateStr = toDateStr(adv.date || adv.pay_date || adv.createdAt);
+        if (!dateStr) return;
+        if (!advanceByDriverByDate[driverId]) advanceByDriverByDate[driverId] = {};
+        const amt = parseFloat(adv.advance_amount ?? adv.amount ?? 0) || 0;
+        advanceByDriverByDate[driverId][dateStr] = (advanceByDriverByDate[driverId][dateStr] || 0) + amt;
+      });
+
+      const excessKMByDriverByDate = {};
+      const excessKMRecordByDriverByDate = {};
+      const startKMByDriverByDate = {};
+      const endKMByDriverByDate = {};
+      excessKMs.forEach(km => {
+        const driverId = String(km.driver_id ?? km.did ?? km.driver?.did ?? '');
+        if (!driverId) return;
+        const dateStr = toDateStr(km.date);
+        if (!dateStr) return;
+        if (!excessKMByDriverByDate[driverId]) {
+          excessKMByDriverByDate[driverId] = {};
+          excessKMRecordByDriverByDate[driverId] = {};
+          startKMByDriverByDate[driverId] = {};
+          endKMByDriverByDate[driverId] = {};
+        }
+        const startKm = parseFloat(km.start_km ?? km.startKm ?? 0) || 0;
+        const endKm = parseFloat(km.end_km ?? km.endKm ?? 0) || 0;
+        const amt = parseFloat(km.amount || 0) || 0;
+        const recordId = km.id ?? km.ekmid ?? km.excess_km_id;
+        if (startKm) {
+          startKMByDriverByDate[driverId][dateStr] = startKMByDriverByDate[driverId][dateStr] != null
+            ? Math.min(startKMByDriverByDate[driverId][dateStr], startKm) : startKm;
+        }
+        if (endKm) {
+          endKMByDriverByDate[driverId][dateStr] = endKMByDriverByDate[driverId][dateStr] != null
+            ? Math.max(endKMByDriverByDate[driverId][dateStr], endKm) : endKm;
+        }
+        excessKMByDriverByDate[driverId][dateStr] = (excessKMByDriverByDate[driverId][dateStr] || 0) + amt;
+        if (recordId && !excessKMRecordByDriverByDate[driverId][dateStr]) {
+          excessKMRecordByDriverByDate[driverId][dateStr] = recordId;
         }
       });
       
@@ -401,189 +477,110 @@ const DriverPayoutManagement = () => {
         workDaysByDriverIdDetails: Object.entries(workDaysByDriverId).map(([id, days]) => ({ id, days: days.size }))
       });
 
-      // Get all unique driver IDs from all sources (wages, fuel expenses, excess KM, work days)
-      // Only include drivers who have actual work records
+      // All driver IDs that have any activity (work days, fuel, excess, advance)
       const allDriverIds = new Set([
         ...Object.keys(wagesByDriverId),
         ...Object.keys(fuelExpenseMap),
         ...Object.keys(excessKMMap),
-        ...Object.keys(workDaysByDriverId)
+        ...Object.keys(workDaysByDriverId),
+        ...Object.keys(fuelByDriverByDate),
+        ...Object.keys(advanceByDriverByDate),
+        ...Object.keys(excessKMByDriverByDate)
       ]);
 
-      console.log('All Driver IDs to process:', Array.from(allDriverIds));
+      const allRows = [];
 
-      // Build final payout rows - only include drivers who have any work
-      const processedPayouts = Array.from(allDriverIds).map((driverId) => {
+      Array.from(allDriverIds).forEach((driverId) => {
         const driver = driverMap.get(driverId);
-        if (!driver) return null;
+        if (!driver) return;
 
-        const excessKMData = excessKMMap[driverId] || { totalKM: 0, amount: 0, days: new Set() };
-        const totalWage = wagesByDriverId[driverId] || 0;
-        
-        // Get driver rate - try multiple ways
         const deliveryType = (driver.deliveryType || driver.delivery_type || 'collection').toLowerCase();
-        let rate = ratesMap[deliveryType] || ratesMap['airport'] || ratesMap['collection'] || 0;
-        
-        // If still no rate, try to get from any active rate
-        if (!rate && driverRates.length > 0) {
+        let driverRate = ratesMap[deliveryType] || ratesMap['airport'] || ratesMap['collection'] || 0;
+        if (!driverRate && driverRates.length > 0) {
           const activeRate = driverRates.find(r => r.status === 'Active');
-          if (activeRate) {
-            rate = parseFloat(activeRate.amount || activeRate.rate || 0) || 0;
-          }
+          if (activeRate) driverRate = parseFloat(activeRate.amount || activeRate.rate || 0) || 0;
         }
-        
-        // Final fallback to driver's daily_wage
-        if (!rate) {
-          rate = parseFloat(driver.daily_wage || driver.dailyWage || 0) || 0;
+        if (!driverRate && driver.daily_wage) driverRate = parseFloat(driver.daily_wage || driver.dailyWage || 0) || 0;
+        if (!driverRate) driverRate = 0;
+
+        let driverKmLimit = kmLimitMap[deliveryType] || kmLimitMap['airport'] || kmLimitMap['collection'] || 0;
+        if (!driverKmLimit && driverRates.length > 0) {
+          const activeRate = driverRates.find(r => r.status === 'Active');
+          if (activeRate) driverKmLimit = parseFloat(activeRate.kilometers ?? activeRate.kilometer ?? activeRate.km ?? 0) || 0;
         }
-        
-        // If still no rate, use a default (you can adjust this)
-        if (!rate) {
-          rate = 2000; // Default daily wage (matching the rate map)
-        }
-        
-        // Collect all work dates for display
-        const orderWorkDays = workDaysByDriverId[driverId] ? workDaysByDriverId[driverId] : new Set();
-        const allWorkDays = new Set([...orderWorkDays]);
-        
-        // Add excess KM days
-        if (excessKMData.days && excessKMData.days.size > 0) {
-          excessKMData.days.forEach(date => {
-            if (date) {
-              try {
-                const normalizedDate = new Date(date).toISOString().split('T')[0];
-                allWorkDays.add(normalizedDate);
-              } catch {
-                allWorkDays.add(String(date));
-              }
+
+        const orderWorkDays = workDaysByDriverId[driverId] || new Set();
+        const fuelDates = Object.keys(fuelByDriverByDate[driverId] || {});
+        const advanceDates = Object.keys(advanceByDriverByDate[driverId] || {});
+        const excessDates = Object.keys(excessKMByDriverByDate[driverId] || {});
+        const startKMDates = Object.keys(startKMByDriverByDate[driverId] || {});
+        const endKMDates = Object.keys(endKMByDriverByDate[driverId] || {});
+
+        const allDates = new Set([
+          ...orderWorkDays,
+          ...fuelDates,
+          ...advanceDates,
+          ...excessDates,
+          ...startKMDates,
+          ...endKMDates
+        ]);
+
+        Array.from(allDates)
+          .sort()
+          .reverse()
+          .forEach((dateStr) => {
+            const basePay = driverRate;
+            const fuel = (fuelByDriverByDate[driverId] || {})[dateStr] || 0;
+            const advancePay = (advanceByDriverByDate[driverId] || {})[dateStr] || 0;
+            const startKM = (startKMByDriverByDate[driverId] || {})[dateStr];
+            const endKM = (endKMByDriverByDate[driverId] || {})[dateStr];
+
+            let excessDistanceKM = 0;
+            if (driverKmLimit && startKM != null && endKM != null) {
+              const travelled = Math.max(endKM - startKM, 0);
+              excessDistanceKM = Math.max(travelled - driverKmLimit, 0);
             }
+
+            const unitPrice = (fuelUnitPriceByDriverByDate[driverId] || {})[dateStr] || 0;
+            const savedAmount = (excessKMByDriverByDate[driverId] || {})[dateStr];
+            const hasManualAmount = savedAmount != null && Number(savedAmount) > 0;
+            let excessKMPrice = 0;
+            if (hasManualAmount) {
+              excessKMPrice = Number(savedAmount);
+            } else if (unitPrice && excessDistanceKM > 0) {
+              excessKMPrice = excessDistanceKM * unitPrice;
+            }
+
+            const totalPayout = basePay - fuel - advancePay + excessKMPrice;
+            const status = 'Pending';
+
+            allRows.push({
+              id: `${driverId}-${dateStr}`,
+              driverId,
+              driverName: driver.driver_name || 'Unknown Driver',
+              driverCode: driver.driver_id || `DRV-${driverId}`,
+              vehicle: driver.vehicle_number || 'N/A',
+              date: dateStr,
+              basePay,
+              fuelExpenses: fuel,
+              startKM,
+              endKM,
+              excessKM: excessDistanceKM,
+              excessKMPrice,
+              advancePay,
+              totalPayout,
+              status
+            });
           });
-        }
-        
-        // Add fuel expense dates
-        const fuelDates = fuelExpenseDatesMap[driverId];
-        if (fuelDates && fuelDates.size > 0) {
-          fuelDates.forEach(date => {
-            if (date) {
-              try {
-                const normalizedDate = new Date(date).toISOString().split('T')[0];
-                allWorkDays.add(normalizedDate);
-              } catch {
-                allWorkDays.add(String(date));
-              }
-            }
-          });
-        }
-        
-        // If still no dates but driver has wages or fuel expenses, try to get dates from orders
-        // This is a fallback for drivers who have work but dates weren't properly recorded
-        if (allWorkDays.size === 0 && (totalWage > 0 || fuelExpenseMap[driverId] > 0)) {
-          // Look through all orders to find dates for this driver
-          // We'll use the most recent order date as a fallback
-          const orderDates = [];
-          orders.forEach(order => {
-            const orderDate = order.order_received_date || order.createdAt;
-            if (orderDate) {
-              try {
-                const dateStr = new Date(orderDate).toISOString().split('T')[0];
-                orderDates.push(dateStr);
-              } catch {
-                // Ignore invalid dates
-              }
-            }
-          });
-          // If we found order dates, use the most recent one
-          if (orderDates.length > 0) {
-            const sortedOrderDates = orderDates.sort().reverse();
-            allWorkDays.add(sortedOrderDates[0]); // Use most recent order date
-          }
-        }
-        
-        // Format dates for display (date range or single date)
-        let dateDisplay = '-';
-        if (allWorkDays.size > 0) {
-          const sortedDates = Array.from(allWorkDays).sort();
-          if (sortedDates.length === 1) {
-            // Single date - format as DD/MM/YYYY
-            const date = new Date(sortedDates[0]);
-            dateDisplay = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-          } else {
-            // Date range - show first and last date
-            const firstDate = new Date(sortedDates[0]);
-            const lastDate = new Date(sortedDates[sortedDates.length - 1]);
-            const firstFormatted = firstDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            const lastFormatted = lastDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            dateDisplay = `${firstFormatted} - ${lastFormatted}`;
-          }
-        }
-        
-        // Calculate days worked the same way as Labour Payout: totalWage / rate, rounded
-        // If no wage from assignments, calculate from work days if available
-        let calculatedWage = totalWage;
-        let daysWorked = 0;
-        
-        if (calculatedWage > 0 && rate > 0) {
-          // Calculate days worked from wage (same as Labour Payout)
-          daysWorked = Math.round(calculatedWage / rate);
-        } else {
-          daysWorked = allWorkDays.size;
-          
-          // If we have work days but no wage, calculate wage from days
-          if (daysWorked > 0 && rate > 0) {
-            calculatedWage = daysWorked * rate;
-          }
-          
-          // Fallback: if driver has fuel expenses or excess KM, count as at least 1 day
-          if (daysWorked === 0) {
-            const fuelCost = fuelExpenseMap[driverId] || 0;
-            if (fuelCost > 0 || excessKMData.amount > 0) {
-              daysWorked = 1;
-              if (rate > 0) {
-                calculatedWage = rate;
-              }
-            }
-          }
-        }
-        
-        const fuelCost = fuelExpenseMap[driverId] || 0;
-        const excessKMAmount = excessKMData.amount || 0;
-        
-        // Net Amount = Total Wage + Excess KM Amount (Fuel expenses are shown separately, not deducted)
-        const netAmount = calculatedWage + excessKMAmount;
+      });
 
-        // Use calculated wage rate if we calculated the wage, otherwise use the rate
-        const displayRate = calculatedWage > 0 && daysWorked > 0 
-          ? (calculatedWage / daysWorked) 
-          : rate;
+      allRows.sort((a, b) => {
+        const dateCmp = (b.date || '').localeCompare(a.date || '');
+        if (dateCmp !== 0) return dateCmp;
+        return (a.driverName || '').localeCompare(b.driverName || '');
+      });
 
-        // Only include drivers who have actual work (wages, excess KM, fuel expenses, or work days)
-        const hasWork = totalWage > 0 || excessKMData.amount > 0 || fuelCost > 0 || allWorkDays.size > 0;
-        
-        if (!hasWork) {
-          return null; // Skip drivers with no work
-        }
-
-        return {
-          id: driverId,
-          driverName: driver.driver_name || 'Unknown Driver',
-          driverCode: driver.driver_id || `DRV-${driverId}`,
-          vehicle: driver.vehicle_number || 'N/A',
-          daysWorked: daysWorked || 1,
-          distance: excessKMData.totalKM || 0,
-          wageRate: displayRate,
-          fuelCost: fuelCost,
-          netAmount: netAmount,
-          status: 'Unpaid',
-          dateDisplay: dateDisplay
-        };
-      }).filter(Boolean);
-
-      // Sort by highest net amount
-      processedPayouts.sort((a, b) => b.netAmount - a.netAmount);
-
-      console.log('Processed Driver Payouts:', processedPayouts);
-
-      setPayouts(processedPayouts);
+      setPayouts(allRows);
     } catch (error) {
       console.error('Error fetching driver payouts:', error);
     } finally {
@@ -592,22 +589,26 @@ const DriverPayoutManagement = () => {
   };
 
   const handlePayClick = (payoutId) => {
-    setPayouts(prevPayouts => 
-      prevPayouts.map(payout => 
-        payout.id === payoutId 
+    setPayouts(prevPayouts =>
+      prevPayouts.map(payout =>
+        payout.id === payoutId
           ? { ...payout, status: 'Paid' }
           : payout
       )
     );
   };
 
+  const formatNum = (n) =>
+    Number.isFinite(n) ? n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '0';
+
   const filteredPayouts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return payouts;
     return payouts.filter(p =>
-      p.driverName.toLowerCase().includes(query) ||
-      p.driverCode.toLowerCase().includes(query) ||
-      p.vehicle.toLowerCase().includes(query)
+      (p.driverName || '').toLowerCase().includes(query) ||
+      (p.driverCode || '').toLowerCase().includes(query) ||
+      (p.vehicle || '').toLowerCase().includes(query) ||
+      (p.date || '').toLowerCase().includes(query)
     );
   }, [payouts, searchQuery]);
 
@@ -617,18 +618,15 @@ const DriverPayoutManagement = () => {
 
   const summaryStats = useMemo(() => {
     const totalPayouts = payouts.length;
-    const totalAmount = payouts.reduce((sum, p) => sum + p.netAmount, 0);
-    const averageDailyWage = payouts.length > 0
-      ? payouts.reduce((sum, p) => sum + p.wageRate, 0) / payouts.length
-      : 0;
-    const totalDeliveries = payouts.reduce((sum, p) => sum + p.daysWorked, 0);
-    const activeDrivers = payouts.length;
+    const totalAmount = payouts.reduce((sum, p) => sum + (p.totalPayout || 0), 0);
+    const uniqueDrivers = new Set(payouts.map(p => p.driverId)).size;
+    const totalDeliveries = payouts.length;
+    const activeDrivers = uniqueDrivers;
 
     return {
       totalPayouts,
       totalDeliveries,
       totalAmount,
-      averageDailyWage,
       activeDrivers
     };
   }, [payouts]);
@@ -751,45 +749,31 @@ const DriverPayoutManagement = () => {
             <table className="w-full">
               <thead>
                 <tr className="bg-[#D4F4E8]">
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Driver Name
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Driver ID
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Date
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Days Worked
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Distance (KM)
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Wage Rate
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Net Amount
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Status
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">
-                    Action
-                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Driver Name</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Driver ID</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Date</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Base Pay</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Fuel Expenses</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Start KM</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">End KM</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Excess KM</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Excess KM Price</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Advance Pay</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Total Payout</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Status</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0D5C4D]">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="9" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="13" className="px-6 py-8 text-center text-[#6B8782]">
                       Loading driver payouts...
                     </td>
                   </tr>
                 ) : paginatedPayouts.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="px-6 py-8 text-center text-[#6B8782]">
+                    <td colSpan="13" className="px-6 py-8 text-center text-[#6B8782]">
                       No driver payouts found
                     </td>
                   </tr>
@@ -805,51 +789,42 @@ const DriverPayoutManagement = () => {
                         <div className="font-semibold text-[#0D5C4D] text-sm">{payout.driverName}</div>
                         <div className="text-xs text-[#6B8782]">Vehicle: {payout.vehicle}</div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-[#0D5C4D]">{payout.driverCode}</div>
+                      <td className="px-6 py-4 text-sm font-medium text-[#0D5C4D]">{payout.driverCode}</td>
+                      <td className="px-6 py-4 text-sm text-[#0D5C4D]">
+                        {payout.date ? new Date(payout.date + 'T12:00:00').toLocaleDateString('en-GB') : '—'}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-[#0D5C4D]">
-                          {payout.dateDisplay || '-'}
-                        </div>
+                      <td className="px-6 py-4 text-sm font-medium text-[#0D5C4D]">₹{formatNum(payout.basePay)}</td>
+                      <td className="px-6 py-4 text-sm font-medium text-red-600">-₹{formatNum(payout.fuelExpenses)}</td>
+                      <td className="px-6 py-4 text-sm text-[#0D5C4D]">
+                        {payout.startKM != null ? `${formatNum(payout.startKM)} km` : '—'}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-[#0D5C4D]">
-                          {payout.daysWorked} days
-                        </div>
+                      <td className="px-6 py-4 text-sm text-[#0D5C4D]">
+                        {payout.endKM != null ? `${formatNum(payout.endKM)} km` : '—'}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-[#0D5C4D]">
-                          {payout.distance.toFixed(0)} km
-                        </div>
+                      <td className="px-6 py-4 text-sm text-[#0D5C4D]">
+                        {payout.excessKM != null && payout.excessKM > 0 ? `${formatNum(payout.excessKM)} km` : '—'}
                       </td>
+                      <td className="px-6 py-4 text-sm font-medium text-green-600">+₹{formatNum(payout.excessKMPrice || 0)}</td>
+                      <td className="px-6 py-4 text-sm font-medium text-red-600">-₹{formatNum(payout.advancePay)}</td>
+                      <td className="px-6 py-4 text-sm font-bold text-[#0D5C4D]">₹{formatNum(payout.totalPayout)}</td>
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-[#0D5C4D]">
-                          {formatCurrency(payout.wageRate)}/day
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-bold text-[#0D5C4D]">
-                          {formatCurrency(payout.netAmount)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-block px-4 py-1.5 rounded-full text-xs font-medium ${getStatusColor(
-                            payout.status
-                          )}`}
-                        >
+                        <span className={`inline-block px-4 py-1.5 rounded-full text-xs font-medium ${getStatusColor(payout.status)}`}>
                           {payout.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 flex gap-2 items-center">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/drivers/${payout.driverId}/daily-payout`)}
+                          className="px-3 py-1.5 text-xs font-medium text-[#0D5C4D] border border-[#0D5C4D] rounded-lg hover:bg-[#D4F4E8] transition-colors"
+                        >
+                          View
+                        </button>
                         <button
                           onClick={() => handlePayClick(payout.id)}
-                          className={`px-6 py-2 rounded-lg text-xs font-semibold transition-colors ${getActionButton(
-                            payout.status
-                          )}`}
+                          className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${getActionButton(payout.status)}`}
                         >
-                          {payout.status === 'Paid' ? 'View' : 'Pay'}
+                          {payout.status === 'Paid' ? 'Paid' : 'Pay'}
                         </button>
                       </td>
                     </tr>
@@ -865,7 +840,7 @@ const DriverPayoutManagement = () => {
           <div className="flex items-center justify-between px-6 py-4 bg-[#F0F4F3] border-t border-[#D0E0DB]">
             <div className="text-sm text-[#6B8782]">
               Showing {filteredPayouts.length === 0 ? 0 : startIndex + 1} to{' '}
-              {Math.min(startIndex + itemsPerPage, filteredPayouts.length)} of {filteredPayouts.length} Drivers
+              {Math.min(startIndex + itemsPerPage, filteredPayouts.length)} of {filteredPayouts.length} daily payouts
             </div>
             <div className="flex items-center gap-2">
               <button

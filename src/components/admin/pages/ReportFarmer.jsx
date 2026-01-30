@@ -310,83 +310,180 @@ const ReportFarmer = () => {
     return farmersArray;
   }, [orderHistoryData, fromDate, toDate, searchTerm]);
 
-  // Export filtered data to Excel
+  // Export filtered data to Excel (summary + line items, same pattern as Supplier)
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
       alert('No data to export');
       return;
     }
 
-    const exportData = filteredData.map(({ order, farmer }) => {
-      const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }) : 'N/A';
-      const products = order.items || [];
-      const productNames = products.map(p => cleanProductName(p.product_name || p.product)).join(', ');
-      const paymentStatus = order.payment_status === 'paid' || order.payment_status === 'completed' ? 'Paid' : 'Unpaid';
+    // Summary per farmer, including list of all unique products
+    const exportData = filteredData.map(f => {
+      const productSet = new Set();
+      orderHistoryData.forEach(({ farmerData }) => {
+        const farmerInfo = farmerData.find(fd => fd.farmerId == f.farmerId);
+        if (farmerInfo && Array.isArray(farmerInfo.assignments)) {
+          farmerInfo.assignments.forEach(a => {
+            const name = cleanProductName(a.product);
+            if (name) productSet.add(name);
+          });
+        }
+      });
+
+      const products = Array.from(productSet).join(', ');
 
       return {
-        'Order ID': order.oid,
-        'Farmer ID': farmer.farmerId,
-        'Farmer Name': farmer.farmerName,
-        'Phone Number': farmer.farmerPhone,
-        'Products': productNames,
-        'Order Date': orderDate,
-        'Amount': farmer.amount.toFixed(2),
-        'Payment Status': paymentStatus
+        'Farmer ID': f.farmerId,
+        'Farmer Name': f.farmerName,
+        'Phone': f.farmerPhone,
+        'Orders': f.orderCount,
+        'Total Amount': parseFloat(f.totalAmount).toFixed(2),
+        'Paid Amount': parseFloat(f.paidAmount || 0).toFixed(2),
+        'Pending Amount': parseFloat(f.pendingAmount || 0).toFixed(2),
+        'Products': products || 'N/A'
       };
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    worksheet['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    // Sheet 1: Farmer summary
+    const summarySheet = XLSX.utils.json_to_sheet(exportData);
+    summarySheet['!cols'] = [
+      { wch: 10 }, // ID
+      { wch: 20 }, // Name
+      { wch: 15 }, // Phone
+      { wch: 10 }, // Orders
+      { wch: 15 }, // Total Amount
+      { wch: 15 }, // Paid Amount
+      { wch: 15 }, // Pending Amount
+      { wch: 30 }  // Products
+    ];
+
+    // Sheet 2: Line items with Order ID, Qty, Boxes, Price/Kg
+    const lineItems = [];
+    filteredData.forEach(f => {
+      orderHistoryData.forEach(({ order, farmerData }) => {
+        const farmerInfo = farmerData.find(fd => fd.farmerId == f.farmerId);
+        if (farmerInfo && Array.isArray(farmerInfo.assignments)) {
+          const orderDate = order.createdAt
+            ? new Date(order.createdAt).toLocaleDateString('en-GB')
+            : 'N/A';
+
+          farmerInfo.assignments.forEach(a => {
+            const boxes = parseInt(a.assignedBoxes) || 0;
+            const qty = parseFloat(a.assignedQty) || 0;
+            const pricePerKg = parseFloat(a.price) || 0;
+            const amount = qty * pricePerKg;
+            const isPaid =
+              order.payment_status === 'paid' ||
+              order.payment_status === 'completed';
+            const paid = isPaid ? amount : 0;
+            const outstanding = isPaid ? 0 : amount;
+
+            const productName = cleanProductName(a.product) || 'N/A';
+
+            lineItems.push({
+              'Farmer ID': f.farmerId,
+              'Farmer Name': f.farmerName,
+              'Order Date': orderDate,
+              'Order ID': order.oid || order.order_id || '',
+              'Product': productName,
+              'Qty (KG)': qty,
+              'Boxes': boxes,
+              'Price/KG': pricePerKg,
+              'Amount': amount,
+              'Paid': paid,
+              'O/S': outstanding
+            });
+          });
+        }
+      });
+    });
+
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Farmer Orders');
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Farmers');
+
+    if (lineItems.length > 0) {
+      const lineSheet = XLSX.utils.json_to_sheet(lineItems);
+      lineSheet['!cols'] = [
+        { wch: 12 }, // Farmer ID
+        { wch: 20 }, // Farmer Name
+        { wch: 12 }, // Order Date
+        { wch: 15 }, // Order ID
+        { wch: 25 }, // Product
+        { wch: 10 }, // Qty (KG)
+        { wch: 8 },  // Boxes
+        { wch: 10 }, // Price/KG
+        { wch: 12 }, // Amount
+        { wch: 10 }, // Paid
+        { wch: 10 }  // O/S
+      ];
+      XLSX.utils.book_append_sheet(workbook, lineSheet, 'Line Items');
+    }
+
     XLSX.writeFile(workbook, `Farmer_Orders_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Export filtered data to PDF
+  // Export filtered data to PDF (line-item view, matching Excel's Line Items sheet)
   const handleExportPDF = () => {
     if (filteredData.length === 0) {
       alert('No data to export');
       return;
     }
 
-    const doc = new jsPDF();
+    const doc = new jsPDF('p', 'pt', 'a4');
     doc.setFontSize(16);
-    doc.text('Farmer Orders Report', 105, 15, { align: 'center' });
+    doc.text('Farmer Orders Report', 300, 30, { align: 'center' });
 
-    const tableData = filteredData.map(({ order, farmer }) => {
-      const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : 'N/A';
-      const products = order.items || [];
-      const productNames = products.map(p => cleanProductName(p.product_name || p.product)).join(', ');
-      const paymentStatus = order.payment_status === 'paid' || order.payment_status === 'completed' ? 'Paid' : 'Unpaid';
+    const lineItems = [];
 
-      return [
-        order.oid,
-        farmer.farmerName,
-        productNames,
-        orderDate,
-        farmer.amount.toFixed(2),
-        paymentStatus
-      ];
+    filteredData.forEach(f => {
+      orderHistoryData.forEach(({ order, farmerData }) => {
+        const farmerInfo = farmerData.find(fd => fd.farmerId == f.farmerId);
+        if (farmerInfo && Array.isArray(farmerInfo.assignments)) {
+          const orderDate = order.createdAt
+            ? new Date(order.createdAt).toLocaleDateString('en-GB')
+            : 'N/A';
+
+          farmerInfo.assignments.forEach(a => {
+            const boxes = parseInt(a.assignedBoxes) || 0;
+            const qty = parseFloat(a.assignedQty) || 0;
+            const pricePerKg = parseFloat(a.price) || 0;
+            const amount = qty * pricePerKg;
+
+            const productName = cleanProductName(a.product) || 'N/A';
+
+            lineItems.push([
+              f.farmerId,
+              f.farmerName,
+              orderDate,
+              order.oid || order.order_id || '',
+              productName,
+              qty,
+              boxes,
+              pricePerKg,
+              amount
+            ]);
+          });
+        }
+      });
     });
 
     doc.autoTable({
-      startY: 25,
-      head: [['Order ID', 'Farmer', 'Products', 'Date', 'Amount', 'Status']],
-      body: tableData,
+      startY: 50,
+      head: [[
+        'Farmer ID',
+        'Farmer Name',
+        'Order Date',
+        'Order ID',
+        'Product',
+        'Qty (KG)',
+        'Boxes',
+        'Price/KG',
+        'Amount'
+      ]],
+      body: lineItems,
       theme: 'grid',
-      headStyles: { fillColor: [68, 114, 196] },
-      columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 30 },
-        2: { cellWidth: 60 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 25 },
-        5: { cellWidth: 20 }
-      },
-      styles: {
-        cellPadding: 2,
-        fontSize: 8
-      }
+      headStyles: { fillColor: [13, 133, 104], textColor: 255, halign: 'center' },
+      styles: { fontSize: 8 },
     });
 
     doc.save(`Farmer_Orders_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -436,8 +533,8 @@ const ReportFarmer = () => {
     wsData.push(['#N/A']);
     wsData.push(['#N/A']);
 
-    // Table Header (Row 8)
-    wsData.push(['S.NO', 'DATE', 'PRODUCT', 'UNIT', 'KGS', 'PRICE', 'AMOUNT', 'PAID', 'O/S', 'REMARKS']);
+    // Table Header (Row 8) - include Order ID, Quantity (KG), Boxes, Price/KG
+    wsData.push(['S.NO', 'DATE', 'ORDER ID', 'PRODUCT', 'QTY (KG)', 'BOXES', 'PRICE/KG', 'AMOUNT', 'PAID', 'O/S', 'REMARKS']);
 
     // Data rows
     let serialNo = 1;
@@ -446,14 +543,12 @@ const ReportFarmer = () => {
 
       farmerInfo.assignments.forEach((assignment) => {
         const boxes = parseInt(assignment.assignedBoxes) || 0;
-        const qty = parseFloat(assignment.assignedQty) || 0;
-        const displayQty = boxes > 0 ? boxes : qty;
-        const price = parseFloat(assignment.price) || 0;
-        const amount = displayQty * price;
+        const qty = parseFloat(assignment.assignedQty) || 0; // quantity in KG
+        const pricePerKg = parseFloat(assignment.price) || 0;
+        const amount = qty * pricePerKg;
         const isPaid = order.payment_status === 'paid' || order.payment_status === 'completed';
         const paid = isPaid ? amount : 0;
         const outstanding = isPaid ? 0 : amount;
-        const unit = boxes > 0 ? `BOX ${boxes}` : 'STOCK';
 
         // Clean product name - remove box/bag information
         let productName = (assignment.product || 'N/A').toUpperCase();
@@ -462,10 +557,11 @@ const ReportFarmer = () => {
         wsData.push([
           serialNo,
           orderDate,
+          order.oid || order.order_id || '',
           productName,
-          unit,
-          displayQty,
-          price || 0,
+          qty || 0,
+          boxes || 0,
+          pricePerKg || 0,
           amount || 0,
           paid || 0,
           outstanding || 0,
@@ -478,8 +574,17 @@ const ReportFarmer = () => {
     // Create worksheet
     const worksheet = XLSX.utils.aoa_to_sheet(wsData);
     worksheet['!cols'] = [
-      { wch: 8 }, { wch: 12 }, { wch: 25 }, { wch: 10 }, { wch: 8 },
-      { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 15 }
+      { wch: 6 },  // S.NO
+      { wch: 12 }, // DATE
+      { wch: 14 }, // ORDER ID
+      { wch: 25 }, // PRODUCT
+      { wch: 10 }, // QTY (KG)
+      { wch: 8 },  // BOXES
+      { wch: 10 }, // PRICE/KG
+      { wch: 12 }, // AMOUNT
+      { wch: 10 }, // PAID
+      { wch: 10 }, // O/S
+      { wch: 15 }  // REMARKS
     ];
 
     // Merge cells

@@ -121,7 +121,7 @@ const DriverDetailsPage = () => {
             Fuel Expenses
           </button>
           <button
-            onClick={() => navigate('/advance-pay-management')}
+            onClick={() => navigate('/advance-pay-management', { state: { driverId: id } })}
             className="px-6 py-2.5 rounded-lg font-medium transition-all text-sm bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 whitespace-nowrap"
           >
             Advance Pay
